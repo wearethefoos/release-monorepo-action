@@ -1,5 +1,13 @@
 import * as core from '@actions/core'
-import { wait } from './wait.js'
+import * as fs from 'fs'
+import { GitHubService } from './github.js'
+import {
+  parseConventionalCommit,
+  determineVersionBump,
+  calculateNewVersion,
+  generateChangelog
+} from './version.js'
+import { PackageManifest, ConventionalCommit, PackageChanges } from './types.js'
 
 /**
  * The main function for the action.
@@ -8,20 +16,97 @@ import { wait } from './wait.js'
  */
 export async function run(): Promise<void> {
   try {
-    const ms: string = core.getInput('milliseconds')
+    const token = core.getInput('token', { required: true })
+    const manifestFile = core.getInput('manifest-file', { required: true })
+    const createPreReleases = core.getInput('create-pre-releases') === 'true'
+    const preReleaseLabel = core.getInput('pre-release-label')
 
-    // Debug logs are only output if the `ACTIONS_STEP_DEBUG` secret is true
-    core.debug(`Waiting ${ms} milliseconds ...`)
+    const github = new GitHubService(token)
+    const labels = await github.getPullRequestLabels()
 
-    // Log the current timestamp, wait, then log the new timestamp
-    core.debug(new Date().toTimeString())
-    await wait(parseInt(ms, 10))
-    core.debug(new Date().toTimeString())
+    // Check if this is a release PR
+    if (labels.includes('release-me')) {
+      core.info('This is a release PR, skipping version calculation')
+      return
+    }
 
-    // Set outputs for other workflow steps to use
-    core.setOutput('time', new Date().toTimeString())
+    // Check if this is a pre-release PR
+    const isPreRelease = labels.includes(preReleaseLabel)
+    if (!createPreReleases && isPreRelease) {
+      core.info(
+        'Pre-releases are disabled and this is a pre-release PR, skipping'
+      )
+      return
+    }
+
+    // Read and parse the manifest file
+    const manifestContent = fs.readFileSync(manifestFile, 'utf-8')
+    const manifest: PackageManifest = JSON.parse(manifestContent)
+
+    const changes: PackageChanges[] = []
+
+    // Process each package in the manifest
+    for (const [packagePath, currentVersion] of Object.entries(manifest)) {
+      // Get commits for this package
+      const commitMessages =
+        await github.getCommitsSinceLastRelease(packagePath)
+      if (commitMessages.length === 0) {
+        continue
+      }
+
+      // Parse conventional commits
+      const commits: ConventionalCommit[] = commitMessages.map((message) => ({
+        ...parseConventionalCommit(message),
+        hash: '' // We don't need the hash for version calculation
+      }))
+
+      // Determine version bump
+      const bump = determineVersionBump(commits)
+      if (bump === 'none') {
+        continue
+      }
+
+      // Calculate new version
+      const newVersion = calculateNewVersion(currentVersion, bump, isPreRelease)
+
+      // Generate changelog
+      const changelog = generateChangelog(commits)
+
+      changes.push({
+        path: packagePath,
+        currentVersion,
+        newVersion,
+        commits,
+        changelog
+      })
+    }
+
+    if (changes.length === 0) {
+      core.info('No changes requiring version updates found')
+      return
+    }
+
+    // Update package versions and create PR if needed
+    for (const change of changes) {
+      await github.updatePackageVersion(change.path, change.newVersion)
+    }
+
+    if (isPreRelease) {
+      await github.createReleasePullRequest(changes)
+    } else {
+      await github.createRelease(changes)
+    }
+
+    // Set outputs
+    core.setOutput('version', changes[0].newVersion)
+    core.setOutput('pre-release', isPreRelease)
   } catch (error) {
-    // Fail the workflow run if an error occurs
-    if (error instanceof Error) core.setFailed(error.message)
+    if (error instanceof Error) {
+      core.setFailed(error.message)
+    } else {
+      core.setFailed('An unknown error occurred')
+    }
   }
 }
+
+run()

@@ -1,23 +1,33 @@
-name: The name of your action here
-description: Provide a description here
-author: Your name or organization here
+name: 'Release'
+description: 'Create semver releases based on conventional commits'
+author: wearethefoos
 
-# Add your action's branding here. This will appear on the GitHub Marketplace.
 branding:
   icon: heart
   color: red
 
-# Define your inputs here.
 inputs:
-  milliseconds:
-    description: Your input description here
+  token:
+    description: 'GitHub token for authentication'
     required: true
-    default: '1000'
+  manifest-file:
+    description: 'The manifest file to use'
+    required: true
+    default: '.release-manifest.json'
+  create-pre-releases:
+    description: 'Whether to create pre-releases from pull requests'
+    required: false
+    default: 'false'
+  pre-release-label:
+    description: 'The PR label to use for pre-releases'
+    required: false
+    default: 'Pre-Release'
 
-# Define your outputs here.
 outputs:
-  time:
-    description: Your output description here
+  version:
+    description: 'The version that was released'
+  pre-release:
+    description: 'Whether the release was a pre-release'
 
 runs:
   using: node20
