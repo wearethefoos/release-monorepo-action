@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { GitHubService } from './github.js'
 import * as core from '../__fixtures__/core.js'
 import { PackageChanges, ConventionalCommit } from './types.js'
+import * as fs from 'fs'
+import * as path from 'path'
 
 // Mock dependencies
 vi.mock('@actions/core', () => core)
@@ -26,6 +28,13 @@ vi.mock('@actions/github', () => ({
     ref: 'refs/heads/main'
   },
   getOctokit: vi.fn()
+}))
+
+// Mock fs module
+vi.mock('fs', () => ({
+  existsSync: vi.fn(),
+  readFileSync: vi.fn(),
+  writeFileSync: vi.fn()
 }))
 
 describe('GitHubService', () => {
@@ -244,12 +253,57 @@ describe('GitHubService', () => {
   })
 
   describe('updatePackageVersion', () => {
-    it('should log update message', async () => {
-      const consoleSpy = vi.spyOn(console, 'log')
-      await githubService.updatePackageVersion('packages/core', '1.0.0')
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'Would update packages/core to version 1.0.0'
+    it('should update package.json version', async () => {
+      const packagePath = 'packages/core'
+      const newVersion = '1.0.0'
+      const packageJsonPath = path.join(packagePath, 'package.json')
+      const packageJson = { name: 'core', version: '0.1.0' }
+
+      vi.mocked(fs.existsSync).mockImplementation(
+        (path) => path === packageJsonPath
       )
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(packageJson))
+      vi.mocked(fs.writeFileSync).mockImplementation(() => {})
+
+      await githubService.updatePackageVersion(packagePath, newVersion)
+
+      expect(fs.readFileSync).toHaveBeenCalledWith(packageJsonPath, 'utf-8')
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
+        packageJsonPath,
+        JSON.stringify({ ...packageJson, version: newVersion }, null, 2) + '\n'
+      )
+    })
+
+    it('should update Cargo.toml version', async () => {
+      const packagePath = 'packages/core'
+      const newVersion = '1.0.0'
+      const cargoTomlPath = path.join(packagePath, 'Cargo.toml')
+      const cargoToml = '[package]\nname = "core"\nversion = "0.1.0"'
+
+      vi.mocked(fs.existsSync).mockImplementation(
+        (path) => path === cargoTomlPath
+      )
+      vi.mocked(fs.readFileSync).mockReturnValue(cargoToml)
+      vi.mocked(fs.writeFileSync).mockImplementation(() => {})
+
+      await githubService.updatePackageVersion(packagePath, newVersion)
+
+      expect(fs.readFileSync).toHaveBeenCalledWith(cargoTomlPath, 'utf-8')
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
+        cargoTomlPath,
+        expect.stringContaining(`version = "${newVersion}"`)
+      )
+    })
+
+    it('should throw error if no package file found', async () => {
+      const packagePath = 'packages/core'
+      const newVersion = '1.0.0'
+
+      vi.mocked(fs.existsSync).mockReturnValue(false)
+
+      await expect(
+        githubService.updatePackageVersion(packagePath, newVersion)
+      ).rejects.toThrow(`No package.json or Cargo.toml found in ${packagePath}`)
     })
   })
 })

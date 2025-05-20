@@ -1,6 +1,9 @@
 import { Octokit } from '@octokit/rest'
 import { context } from '@actions/github'
 import { ReleaseContext, PackageChanges } from './types.js'
+import * as fs from 'fs'
+import * as path from 'path'
+import * as toml from '@iarna/toml'
 
 export class GitHubService {
   private octokit: Octokit
@@ -132,8 +135,24 @@ export class GitHubService {
     packagePath: string,
     newVersion: string
   ): Promise<void> {
-    // This is a placeholder - actual implementation would depend on the package manager
-    // and would need to handle both package.json and Cargo.toml
-    console.log(`Would update ${packagePath} to version ${newVersion}`)
+    const packageJsonPath = path.join(packagePath, 'package.json')
+    const cargoTomlPath = path.join(packagePath, 'Cargo.toml')
+
+    if (fs.existsSync(packageJsonPath)) {
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'))
+      packageJson.version = newVersion
+      fs.writeFileSync(
+        packageJsonPath,
+        JSON.stringify(packageJson, null, 2) + '\n'
+      )
+    } else if (fs.existsSync(cargoTomlPath)) {
+      const cargoToml = toml.parse(fs.readFileSync(cargoTomlPath, 'utf-8'))
+      if (cargoToml.package) {
+        cargoToml.package.version = newVersion
+        fs.writeFileSync(cargoTomlPath, toml.stringify(cargoToml))
+      }
+    } else {
+      throw new Error(`No package.json or Cargo.toml found in ${packagePath}`)
+    }
   }
 }
