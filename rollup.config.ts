@@ -12,7 +12,13 @@ const config = {
     format: 'es',
     sourcemap: true
   },
-  plugins: [typescript(), nodeResolve({ preferBuiltins: true }), commonjs()]
+  plugins: [
+    typescript({
+      tsconfig: 'tsconfig.build.json'
+    }),
+    nodeResolve({ preferBuiltins: true }),
+    commonjs()
+  ]
 }
 
 export default config

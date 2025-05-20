@@ -52,9 +52,11 @@ export function determineVersionBump(
     const bump = CONVENTIONAL_COMMIT_TYPES[
       commit.type as keyof typeof CONVENTIONAL_COMMIT_TYPES
     ] as VersionBump
+
+    // Update highestBump if the current bump is higher
     if (
       bump === 'major' ||
-      (bump === 'minor' && highestBump === 'patch') ||
+      (bump === 'minor' && highestBump !== 'major') ||
       (bump === 'patch' && highestBump === 'none')
     ) {
       highestBump = bump
