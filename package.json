@@ -15,7 +15,7 @@
     "package": "rollup --config rollup.config.ts --configPlugin @rollup/plugin-typescript",
     "package:watch": "pnpm run package -- --watch",
     "test": "NODE_OPTIONS=--experimental-vm-modules NODE_NO_WARNINGS=1 vitest",
-    "all": "pnpm run format:write && pnpm run lint && pnpm run test && pnpm run coverage && pnpm run package"
+    "all": "pnpm run format:write && pnpm run lint && pnpm run ci-test && pnpm run coverage && pnpm run package"
   },
   "repository": {
     "type": "git",
@@ -37,6 +37,7 @@
     "semver": "^7.7.2"
   },
   "devDependencies": {
+    "@eslint/compat": "^1.2.9",
     "@rollup/plugin-commonjs": "^28.0.3",
     "@rollup/plugin-node-resolve": "^16.0.1",
     "@rollup/plugin-typescript": "^12.1.2",
@@ -48,6 +49,7 @@
     "@vitest/coverage-v8": "^1.6.1",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-prettier": "^5.4.0",
     "make-coverage-badge": "^1.2.0",
     "prettier": "^3.5.3",

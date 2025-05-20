@@ -149,7 +149,8 @@ export class GitHubService {
     } else if (fs.existsSync(cargoTomlPath)) {
       const cargoToml = toml.parse(fs.readFileSync(cargoTomlPath, 'utf-8'))
       if (cargoToml.package) {
-        cargoToml.package.version = newVersion
+        ;(cargoToml.package as unknown as { version: string }).version =
+          newVersion
         fs.writeFileSync(cargoTomlPath, toml.stringify(cargoToml))
       }
     } else if (fs.existsSync(versionTxtPath)) {

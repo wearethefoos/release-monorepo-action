@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { GitHubService } from './github.js'
 import * as core from '../__fixtures__/core.js'
-import { PackageChanges, ConventionalCommit } from './types.js'
+import { PackageChanges } from './types.js'
 import * as fs from 'fs'
 import * as path from 'path'
 
@@ -25,9 +25,26 @@ vi.mock('@actions/github', () => ({
       },
       ref: 'refs/heads/main'
     },
-    ref: 'refs/heads/main'
-  },
-  getOctokit: vi.fn()
+    ref: 'refs/heads/main',
+    octokit: {
+      pulls: {
+        get: vi.fn(),
+        update: vi.fn()
+      },
+      issues: {
+        addLabels: vi.fn()
+      },
+      repos: {
+        compareCommits: vi.fn(),
+        createRelease: vi.fn(),
+        createPullRequest: vi.fn()
+      },
+      git: {
+        createRef: vi.fn(),
+        updateRef: vi.fn()
+      }
+    }
+  }
 }))
 
 // Mock fs module
@@ -63,7 +80,7 @@ describe('GitHubService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     githubService = new GitHubService('test-token')
-    ;(githubService as any).octokit = mockOctokit
+    ;(githubService.octokit as typeof mockOctokit) = mockOctokit
   })
 
   describe('getPullRequestLabels', () => {

@@ -1,4 +1,3 @@
-import type * as core from '@actions/core'
 import { vi } from 'vitest'
 
 export const debug = vi.fn()

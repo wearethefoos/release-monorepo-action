@@ -158,7 +158,7 @@ export function generateChangelog(commits: ConventionalCommit[]): string {
   }
 
   const changelog = Object.entries(sections)
-    .filter(([_, items]) => items.length > 0)
+    .filter(([, items]) => items.length > 0)
     .map(([title, items]) => `### ${title}\n\n${items.join('\n')}`)
     .join('\n\n')
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, vi, Mock } from 'vitest'
 import * as core from '../__fixtures__/core.js'
 import * as fs from 'fs'
 
@@ -49,7 +49,9 @@ describe('main.ts', () => {
       }
     })
     // Mock fs.readFileSync
-    ;(fs.readFileSync as any).mockReturnValue(JSON.stringify(mockManifest))
+    ;(fs.readFileSync as unknown as Mock).mockReturnValue(
+      JSON.stringify(mockManifest)
+    )
   })
 
   it('should exit early if no changes requiring version updates are found', async () => {
@@ -154,7 +156,7 @@ describe('main.ts', () => {
       if (name === 'manifest-file') return '.release-manifest.json'
       return ''
     })
-    ;(fs.readFileSync as any).mockReturnValue(
+    ;(fs.readFileSync as unknown as Mock).mockReturnValue(
       JSON.stringify({
         'packages/core': '1.0.0',
         'packages/utils': '2.1.0'
