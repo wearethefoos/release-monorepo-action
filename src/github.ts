@@ -137,6 +137,7 @@ export class GitHubService {
   ): Promise<void> {
     const packageJsonPath = path.join(packagePath, 'package.json')
     const cargoTomlPath = path.join(packagePath, 'Cargo.toml')
+    const versionTxtPath = path.join(packagePath, 'version.txt')
 
     if (fs.existsSync(packageJsonPath)) {
       const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'))
@@ -151,8 +152,13 @@ export class GitHubService {
         cargoToml.package.version = newVersion
         fs.writeFileSync(cargoTomlPath, toml.stringify(cargoToml))
       }
+    } else if (fs.existsSync(versionTxtPath)) {
+      // For version.txt, we just write the version number directly
+      fs.writeFileSync(versionTxtPath, newVersion + '\n')
     } else {
-      throw new Error(`No package.json or Cargo.toml found in ${packagePath}`)
+      throw new Error(
+        `No package.json, Cargo.toml, or version.txt found in ${packagePath}`
+      )
     }
   }
 }

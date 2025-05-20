@@ -295,6 +295,24 @@ describe('GitHubService', () => {
       )
     })
 
+    it('should update version.txt version', async () => {
+      const packagePath = 'packages/core'
+      const newVersion = '1.0.0'
+      const versionTxtPath = path.join(packagePath, 'version.txt')
+
+      vi.mocked(fs.existsSync).mockImplementation(
+        (path) => path === versionTxtPath
+      )
+      vi.mocked(fs.writeFileSync).mockImplementation(() => {})
+
+      await githubService.updatePackageVersion(packagePath, newVersion)
+
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
+        versionTxtPath,
+        newVersion + '\n'
+      )
+    })
+
     it('should throw error if no package file found', async () => {
       const packagePath = 'packages/core'
       const newVersion = '1.0.0'
@@ -303,7 +321,9 @@ describe('GitHubService', () => {
 
       await expect(
         githubService.updatePackageVersion(packagePath, newVersion)
-      ).rejects.toThrow(`No package.json or Cargo.toml found in ${packagePath}`)
+      ).rejects.toThrow(
+        `No package.json, Cargo.toml, or version.txt found in ${packagePath}`
+      )
     })
   })
 })
