@@ -37,8 +37,8 @@ jobs:
           cache: pnpm
 
       - name: Install Dependencies
-        id: pnpm-ci
-        run: pnpm ci
+        id: pnpm-install
+        run: pnpm install
 
       - name: Setup Ruby
         id: setup-ruby

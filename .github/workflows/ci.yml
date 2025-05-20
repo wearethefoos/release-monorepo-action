@@ -35,8 +35,8 @@ jobs:
           cache: pnpm
 
       - name: Install Dependencies
-        id: pnpm-ci
-        run: pnpm ci
+        id: pnpm-install
+        run: pnpm install
 
       - name: Check Format
         id: pnpm-format-check
@@ -47,7 +47,7 @@ jobs:
         run: pnpm run lint
 
       - name: Test
-        id: pnpm-ci-test
+        id: pnpm-install-test
         run: pnpm run ci-test
 
   test-action:
