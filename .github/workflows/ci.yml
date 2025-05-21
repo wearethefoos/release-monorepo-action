@@ -77,5 +77,5 @@ jobs:
       - name: Print Output
         id: output
         run: |
-          echo "Prereleases: ${{ steps.prerelease.outputs.prereleases }}"
+          echo "Prereleases: ${{ steps.prerelease.outputs.versions }}"
           echo "Versions: ${{ steps.release.outputs.versions }}"

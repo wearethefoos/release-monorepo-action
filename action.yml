@@ -30,8 +30,10 @@ inputs:
 outputs:
   version:
     description: 'The version that was released'
+  versions:
+    description: 'The versions that were released (e.g. from a monorepo)'
   prerelease:
-    description: 'Whether the release was a prerelease'
+    description: 'Whether the release or releases were prereleases'
 
 runs:
   using: node20
