@@ -39,6 +39,7 @@
   "devDependencies": {
     "@eslint/compat": "^1.2.9",
     "@eslint/eslintrc": "^3.3.1",
+    "@eslint/js": "^9.27.0",
     "@rollup/plugin-commonjs": "^28.0.3",
     "@rollup/plugin-node-resolve": "^16.0.1",
     "@rollup/plugin-typescript": "^12.1.2",
@@ -52,9 +53,11 @@
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-prettier": "^5.4.0",
+    "globals": "^16.1.0",
     "make-coverage-badge": "^1.2.0",
     "prettier": "^3.5.3",
     "rollup": "^4.41.0",
+    "tslib": "^2.8.1",
     "typescript": "^5.8.3",
     "vitest": "^1.6.1"
   }
