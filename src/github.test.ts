@@ -4,47 +4,53 @@ import { PackageChanges } from './types.js'
 import * as fs from 'fs'
 import * as path from 'path'
 
-// Mock dependencies
+// Mock @actions/core
 vi.mock('@actions/core', () => ({
-  setOutput: vi.fn()
+  info: vi.fn(),
+  setOutput: vi.fn(),
+  setFailed: vi.fn()
 }))
+
+// Mock Octokit
+const mockOctokit = {
+  repos: {
+    compareCommits: vi.fn(),
+    createRelease: vi.fn(),
+    createPullRequest: vi.fn(),
+    listReleases: vi.fn()
+  },
+  git: {
+    createRef: vi.fn()
+  },
+  pulls: {
+    update: vi.fn(),
+    get: vi.fn()
+  },
+  issues: {
+    addLabels: vi.fn()
+  }
+}
+
+vi.mock('@octokit/rest', () => ({
+  Octokit: vi.fn(() => mockOctokit)
+}))
+
+// Mock GitHub context
 vi.mock('@actions/github', () => ({
   context: {
+    payload: {
+      pull_request: {
+        number: 123,
+        base: { ref: 'test-base' },
+        head: { ref: 'test-head' }
+      }
+    },
+    ref: 'test-ref',
     repo: {
       owner: 'test-owner',
       repo: 'test-repo'
     },
-    payload: {
-      pull_request: {
-        number: 123,
-        base: {
-          ref: 'main'
-        },
-        head: {
-          ref: 'feature-branch'
-        }
-      },
-      ref: 'refs/heads/main'
-    },
-    ref: 'refs/heads/main',
-    octokit: {
-      pulls: {
-        get: vi.fn(),
-        update: vi.fn()
-      },
-      issues: {
-        addLabels: vi.fn()
-      },
-      repos: {
-        compareCommits: vi.fn(),
-        createRelease: vi.fn(),
-        createPullRequest: vi.fn()
-      },
-      git: {
-        createRef: vi.fn(),
-        updateRef: vi.fn()
-      }
-    }
+    sha: 'test-sha'
   }
 }))
 
@@ -57,34 +63,10 @@ vi.mock('fs', () => ({
 
 describe('GitHubService', () => {
   let githubService: GitHubService
-  const mockOctokit = {
-    pulls: {
-      get: vi.fn(),
-      update: vi.fn()
-    },
-    issues: {
-      addLabels: vi.fn(),
-      listLabelsOnIssue: vi.fn(),
-      createComment: vi.fn()
-    },
-    repos: {
-      compareCommits: vi.fn(),
-      createRelease: vi.fn(),
-      createPullRequest: vi.fn()
-    },
-    git: {
-      createRef: vi.fn(),
-      updateRef: vi.fn()
-    }
-  }
 
   beforeEach(() => {
     vi.clearAllMocks()
     githubService = new GitHubService('test-token')
-    Object.defineProperty(githubService, 'octokit', {
-      value: mockOctokit,
-      writable: true
-    })
   })
 
   describe('getPullRequestLabels', () => {
@@ -108,6 +90,14 @@ describe('GitHubService', () => {
 
   describe('getCommitsSinceLastRelease', () => {
     it('should return commits since last release', async () => {
+      const mockReleases = {
+        data: [
+          {
+            tag_name: 'packages/core-v1.0.0',
+            prerelease: false
+          }
+        ]
+      }
       const mockCommits = {
         data: {
           commits: [
@@ -122,14 +112,95 @@ describe('GitHubService', () => {
           ]
         }
       }
+      mockOctokit.repos.listReleases.mockResolvedValue(mockReleases)
       mockOctokit.repos.compareCommits.mockResolvedValue(mockCommits)
 
       const commits =
         await githubService.getCommitsSinceLastRelease('packages/core')
       expect(commits).toEqual(['feat: add feature', 'fix: fix bug'])
+      expect(mockOctokit.repos.compareCommits).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        base: 'packages/core-v1.0.0',
+        head: 'test-head'
+      })
+    })
+
+    it('should handle no previous release', async () => {
+      const mockReleases = {
+        data: []
+      }
+      const mockCommits = {
+        data: {
+          commits: [
+            {
+              commit: { message: 'feat: add feature' },
+              files: [{ filename: 'packages/core/src/index.ts' }]
+            }
+          ]
+        }
+      }
+      mockOctokit.repos.listReleases.mockResolvedValue(mockReleases)
+      mockOctokit.repos.compareCommits.mockResolvedValue(mockCommits)
+
+      const commits =
+        await githubService.getCommitsSinceLastRelease('packages/core')
+      expect(commits).toEqual(['feat: add feature'])
+      expect(mockOctokit.repos.compareCommits).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        base: 'HEAD~1000',
+        head: 'test-head'
+      })
+    })
+
+    it('should ignore prereleases when finding last release', async () => {
+      const mockReleases = {
+        data: [
+          {
+            tag_name: 'packages/core-v1.1.0-rc.1',
+            prerelease: true
+          },
+          {
+            tag_name: 'packages/core-v1.0.0',
+            prerelease: false
+          }
+        ]
+      }
+      const mockCommits = {
+        data: {
+          commits: [
+            {
+              commit: { message: 'feat: add feature' },
+              files: [{ filename: 'packages/core/src/index.ts' }]
+            }
+          ]
+        }
+      }
+      mockOctokit.repos.listReleases.mockResolvedValue(mockReleases)
+      mockOctokit.repos.compareCommits.mockResolvedValue(mockCommits)
+
+      const commits =
+        await githubService.getCommitsSinceLastRelease('packages/core')
+      expect(commits).toEqual(['feat: add feature'])
+      expect(mockOctokit.repos.compareCommits).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        base: 'packages/core-v1.0.0',
+        head: 'test-head'
+      })
     })
 
     it('should handle no commits found', async () => {
+      const mockReleases = {
+        data: [
+          {
+            tag_name: 'packages/core-v1.0.0',
+            prerelease: false
+          }
+        ]
+      }
+      mockOctokit.repos.listReleases.mockResolvedValue(mockReleases)
       mockOctokit.repos.compareCommits.mockResolvedValue({
         data: { commits: [] }
       })
@@ -139,7 +210,7 @@ describe('GitHubService', () => {
     })
 
     it('should handle API errors', async () => {
-      mockOctokit.repos.compareCommits.mockRejectedValue(new Error('API Error'))
+      mockOctokit.repos.listReleases.mockRejectedValue(new Error('API Error'))
       await expect(
         githubService.getCommitsSinceLastRelease('packages/core')
       ).rejects.toThrow('API Error')

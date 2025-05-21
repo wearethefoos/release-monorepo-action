@@ -129,10 +129,28 @@ export class GitHubService {
   }
 
   async getCommitsSinceLastRelease(packagePath: string): Promise<string[]> {
+    core.info(`Getting commits since last release for ${packagePath}...`)
+
+    // Get all releases for the repository
+    const { data: releases } = await this.octokit.repos.listReleases({
+      owner: this.releaseContext.owner,
+      repo: this.releaseContext.repo
+    })
+
+    // Find the last release for this package
+    const packageTagPrefix = `${packagePath}-v`
+    const lastRelease = releases.find(
+      (release) =>
+        release.tag_name.startsWith(packageTagPrefix) && !release.prerelease
+    )
+
+    // If no release found, get all commits since the beginning
+    const base = lastRelease ? lastRelease.tag_name : 'HEAD~1000' // Look back 1000 commits if no release found
+
     const { data: commits } = await this.octokit.repos.compareCommits({
       owner: this.releaseContext.owner,
       repo: this.releaseContext.repo,
-      base: this.releaseContext.baseRef,
+      base,
       head: this.releaseContext.headRef
     })
 
