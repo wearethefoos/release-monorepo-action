@@ -202,7 +202,7 @@ export class GitHubService {
       .filter((commit) => {
         // Check if any files in the commit are within the package path
         core.info(
-          `Checking ${commit.files?.length ?? 0} files in commit ${commit.commit.message}`
+          `Checking ${commit.files?.length ?? '(no files)'} files in commit ${commit.commit.message}`
         )
         return commit.files?.some((file) => {
           core.info(
