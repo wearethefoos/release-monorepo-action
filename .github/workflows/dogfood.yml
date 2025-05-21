@@ -1,0 +1,32 @@
+name: Release
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Release
+        id: release
+        uses: ./
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Print Versions
+        id: print-versions
+        run: |
+          echo "version: ${{ steps.release.outputs.version }}"
