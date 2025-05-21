@@ -33,6 +33,32 @@ class GitHubService {
             repo: repo.repo
         };
     }
+    async getCommitCount(ref = 'HEAD') {
+        const { data: commits } = await this.octokit.repos.listCommits({
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo,
+            sha: ref,
+            per_page: 1
+        });
+        // Get the total count from the Link header
+        const response = await this.octokit.request('GET /repos/{owner}/{repo}/commits', {
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo,
+            sha: ref,
+            per_page: 1
+        });
+        // Extract the total count from the Link header
+        const linkHeader = response.headers.link;
+        if (!linkHeader) {
+            return commits.length;
+        }
+        // Parse the Link header to get the last page number
+        const lastPageMatch = linkHeader.match(/page=(\d+)>; rel="last"/);
+        if (lastPageMatch) {
+            return parseInt(lastPageMatch[1], 10);
+        }
+        return commits.length;
+    }
     async getPullRequestLabels() {
         if (!this.releaseContext.isPullRequest ||
             !this.releaseContext.pullRequestNumber) {
@@ -120,13 +146,21 @@ class GitHubService {
         // Find the last release for this package
         const packageTagPrefix = `${packagePath}-v`;
         const lastRelease = releases.find((release) => release.tag_name.startsWith(packageTagPrefix) && !release.prerelease);
-        // If no release found, get all commits since the beginning
-        const base = lastRelease ? lastRelease.tag_name : 'HEAD~1000'; // Look back 1000 commits if no release found
-        const { data: commits } = await this.octokit.repos.compareCommits({
+        // If no release found, get commits since the beginning
+        let base;
+        if (lastRelease) {
+            base = lastRelease.tag_name;
+        }
+        else {
+            // Get total commit count and use that to look back
+            const totalCommits = await this.getCommitCount();
+            const lookbackCount = Math.min(50, totalCommits);
+            base = `HEAD~${lookbackCount}`;
+        }
+        const { data: commits } = await this.octokit.repos.compareCommitsWithBasehead({
             owner: this.releaseContext.owner,
             repo: this.releaseContext.repo,
-            base,
-            head: this.releaseContext.headRef
+            basehead: `${base}..${this.releaseContext.headRef}`
         });
         return commits.commits
             .filter((commit) => {

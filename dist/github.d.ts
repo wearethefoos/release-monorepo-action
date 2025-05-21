@@ -4,6 +4,7 @@ export declare class GitHubService {
     private releaseContext;
     constructor(token: string);
     private getReleaseContext;
+    getCommitCount(ref?: string): Promise<number>;
     getPullRequestLabels(): Promise<string[]>;
     createReleasePullRequest(changes: PackageChanges[]): Promise<void>;
     private generatePullRequestBody;

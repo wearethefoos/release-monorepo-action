@@ -14,10 +14,11 @@ vi.mock('@actions/core', () => ({
 // Mock Octokit
 const mockOctokit = {
   repos: {
-    compareCommits: vi.fn(),
+    compareCommitsWithBasehead: vi.fn(),
     createRelease: vi.fn(),
     createPullRequest: vi.fn(),
-    listReleases: vi.fn()
+    listReleases: vi.fn(),
+    listCommits: vi.fn()
   },
   git: {
     createRef: vi.fn()
@@ -28,7 +29,8 @@ const mockOctokit = {
   },
   issues: {
     addLabels: vi.fn()
-  }
+  },
+  request: vi.fn()
 }
 
 vi.mock('@octokit/rest', () => ({
@@ -88,6 +90,69 @@ describe('GitHubService', () => {
     })
   })
 
+  describe('getCommitCount', () => {
+    it('should return commit count from Link header', async () => {
+      const mockResponse = {
+        headers: {
+          link: '<https://api.github.com/repos/test-owner/test-repo/commits?page=2>; rel="next", <https://api.github.com/repos/test-owner/test-repo/commits?page=50>; rel="last"'
+        }
+      }
+
+      mockOctokit.repos.listCommits.mockResolvedValue({
+        data: [{ sha: 'test-sha' }]
+      })
+
+      mockOctokit.request.mockResolvedValue(mockResponse)
+
+      const count = await githubService.getCommitCount()
+      expect(count).toBe(50)
+      expect(mockOctokit.repos.listCommits).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        sha: 'HEAD',
+        per_page: 1
+      })
+    })
+
+    it('should return 1 when no Link header is present', async () => {
+      const mockResponse = {
+        headers: {}
+      }
+
+      mockOctokit.repos.listCommits.mockResolvedValue({
+        data: [{ sha: 'test-sha' }]
+      })
+
+      mockOctokit.request.mockResolvedValue(mockResponse)
+
+      const count = await githubService.getCommitCount()
+      expect(count).toBe(1)
+    })
+
+    it('should use provided ref', async () => {
+      const mockResponse = {
+        headers: {
+          link: '<https://api.github.com/repos/test-owner/test-repo/commits?page=2>; rel="next", <https://api.github.com/repos/test-owner/test-repo/commits?page=50>; rel="last"'
+        }
+      }
+
+      mockOctokit.repos.listCommits.mockResolvedValue({
+        data: [{ sha: 'test-sha' }]
+      })
+
+      mockOctokit.request.mockResolvedValue(mockResponse)
+
+      const count = await githubService.getCommitCount('main')
+      expect(count).toBe(50)
+      expect(mockOctokit.repos.listCommits).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        sha: 'main',
+        per_page: 1
+      })
+    })
+  })
+
   describe('getCommitsSinceLastRelease', () => {
     it('should return commits since last release', async () => {
       const mockReleases = {
@@ -113,17 +178,20 @@ describe('GitHubService', () => {
         }
       }
       mockOctokit.repos.listReleases.mockResolvedValue(mockReleases)
-      mockOctokit.repos.compareCommits.mockResolvedValue(mockCommits)
+      mockOctokit.repos.compareCommitsWithBasehead.mockResolvedValue(
+        mockCommits
+      )
 
       const commits =
         await githubService.getCommitsSinceLastRelease('packages/core')
       expect(commits).toEqual(['feat: add feature', 'fix: fix bug'])
-      expect(mockOctokit.repos.compareCommits).toHaveBeenCalledWith({
-        owner: 'test-owner',
-        repo: 'test-repo',
-        base: 'packages/core-v1.0.0',
-        head: 'test-head'
-      })
+      expect(mockOctokit.repos.compareCommitsWithBasehead).toHaveBeenCalledWith(
+        {
+          owner: 'test-owner',
+          repo: 'test-repo',
+          basehead: 'packages/core-v1.0.0..test-head'
+        }
+      )
     })
 
     it('should handle no previous release', async () => {
@@ -140,18 +208,31 @@ describe('GitHubService', () => {
           ]
         }
       }
+      const mockResponse = {
+        headers: {
+          link: '<https://api.github.com/repos/test-owner/test-repo/commits?page=2>; rel="next", <https://api.github.com/repos/test-owner/test-repo/commits?page=50>; rel="last"'
+        }
+      }
+
       mockOctokit.repos.listReleases.mockResolvedValue(mockReleases)
-      mockOctokit.repos.compareCommits.mockResolvedValue(mockCommits)
+      mockOctokit.repos.compareCommitsWithBasehead.mockResolvedValue(
+        mockCommits
+      )
+      mockOctokit.repos.listCommits.mockResolvedValue({
+        data: [{ sha: 'test-sha' }]
+      })
+      mockOctokit.request.mockResolvedValue(mockResponse)
 
       const commits =
         await githubService.getCommitsSinceLastRelease('packages/core')
       expect(commits).toEqual(['feat: add feature'])
-      expect(mockOctokit.repos.compareCommits).toHaveBeenCalledWith({
-        owner: 'test-owner',
-        repo: 'test-repo',
-        base: 'HEAD~1000',
-        head: 'test-head'
-      })
+      expect(mockOctokit.repos.compareCommitsWithBasehead).toHaveBeenCalledWith(
+        {
+          owner: 'test-owner',
+          repo: 'test-repo',
+          basehead: 'HEAD~50..test-head'
+        }
+      )
     })
 
     it('should ignore prereleases when finding last release', async () => {
@@ -178,17 +259,20 @@ describe('GitHubService', () => {
         }
       }
       mockOctokit.repos.listReleases.mockResolvedValue(mockReleases)
-      mockOctokit.repos.compareCommits.mockResolvedValue(mockCommits)
+      mockOctokit.repos.compareCommitsWithBasehead.mockResolvedValue(
+        mockCommits
+      )
 
       const commits =
         await githubService.getCommitsSinceLastRelease('packages/core')
       expect(commits).toEqual(['feat: add feature'])
-      expect(mockOctokit.repos.compareCommits).toHaveBeenCalledWith({
-        owner: 'test-owner',
-        repo: 'test-repo',
-        base: 'packages/core-v1.0.0',
-        head: 'test-head'
-      })
+      expect(mockOctokit.repos.compareCommitsWithBasehead).toHaveBeenCalledWith(
+        {
+          owner: 'test-owner',
+          repo: 'test-repo',
+          basehead: 'packages/core-v1.0.0..test-head'
+        }
+      )
     })
 
     it('should handle no commits found', async () => {
@@ -201,7 +285,7 @@ describe('GitHubService', () => {
         ]
       }
       mockOctokit.repos.listReleases.mockResolvedValue(mockReleases)
-      mockOctokit.repos.compareCommits.mockResolvedValue({
+      mockOctokit.repos.compareCommitsWithBasehead.mockResolvedValue({
         data: { commits: [] }
       })
       const commits =
@@ -214,6 +298,88 @@ describe('GitHubService', () => {
       await expect(
         githubService.getCommitsSinceLastRelease('packages/core')
       ).rejects.toThrow('API Error')
+    })
+
+    it('should use commit count for fallback when no release exists', async () => {
+      const mockReleases = {
+        data: []
+      }
+      const mockCommits = {
+        data: {
+          commits: [
+            {
+              commit: { message: 'feat: add feature' },
+              files: [{ filename: 'packages/core/src/index.ts' }]
+            }
+          ]
+        }
+      }
+      const mockResponse = {
+        headers: {
+          link: '<https://api.github.com/repos/test-owner/test-repo/commits?page=2>; rel="next", <https://api.github.com/repos/test-owner/test-repo/commits?page=50>; rel="last"'
+        }
+      }
+
+      mockOctokit.repos.listReleases.mockResolvedValue(mockReleases)
+      mockOctokit.repos.compareCommitsWithBasehead.mockResolvedValue(
+        mockCommits
+      )
+      mockOctokit.repos.listCommits.mockResolvedValue({
+        data: [{ sha: 'test-sha' }]
+      })
+      mockOctokit.request.mockResolvedValue(mockResponse)
+
+      const commits =
+        await githubService.getCommitsSinceLastRelease('packages/core')
+      expect(commits).toEqual(['feat: add feature'])
+      expect(mockOctokit.repos.compareCommitsWithBasehead).toHaveBeenCalledWith(
+        {
+          owner: 'test-owner',
+          repo: 'test-repo',
+          basehead: 'HEAD~50..test-head'
+        }
+      )
+    })
+
+    it('should limit fallback to 50 commits', async () => {
+      const mockReleases = {
+        data: []
+      }
+      const mockCommits = {
+        data: {
+          commits: [
+            {
+              commit: { message: 'feat: add feature' },
+              files: [{ filename: 'packages/core/src/index.ts' }]
+            }
+          ]
+        }
+      }
+      const mockResponse = {
+        headers: {
+          link: '<https://api.github.com/repos/test-owner/test-repo/commits?page=2>; rel="next", <https://api.github.com/repos/test-owner/test-repo/commits?page=2000>; rel="last"'
+        }
+      }
+
+      mockOctokit.repos.listReleases.mockResolvedValue(mockReleases)
+      mockOctokit.repos.compareCommitsWithBasehead.mockResolvedValue(
+        mockCommits
+      )
+      mockOctokit.repos.listCommits.mockResolvedValue({
+        data: [{ sha: 'test-sha' }]
+      })
+      mockOctokit.request.mockResolvedValue(mockResponse)
+
+      const commits =
+        await githubService.getCommitsSinceLastRelease('packages/core')
+      expect(commits).toEqual(['feat: add feature'])
+      expect(mockOctokit.repos.compareCommitsWithBasehead).toHaveBeenCalledWith(
+        {
+          owner: 'test-owner',
+          repo: 'test-repo',
+          basehead: 'HEAD~50..test-head'
+        }
+      )
     })
   })
 
