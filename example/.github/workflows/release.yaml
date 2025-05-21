@@ -1,9 +1,9 @@
 name: Release
 on:
   push:
-    branches:
-      - main
   workflow_dispatch:
+
+permissions: read-all
 
 jobs:
   release:
@@ -11,7 +11,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Release
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pre-Release
+        id: pre-release
         uses: wearethefoos/release-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          create-pre-release: true
+
+      - name: Release
+        id: release
+        uses: wearethefoos/release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Print Versions
+        id: print-versions
+        run: |
+          echo "Pre-releases: ${{ steps.pre-release.outputs.versions }}"
+          echo "Versions: ${{ steps.release.outputs.versions }}"

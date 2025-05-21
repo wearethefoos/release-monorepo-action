@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { GitHubService } from './github.js'
-import * as core from '../__fixtures__/core.js'
 import { PackageChanges } from './types.js'
 import * as fs from 'fs'
 import * as path from 'path'
 
 // Mock dependencies
-vi.mock('@actions/core', () => core)
+vi.mock('@actions/core', () => ({
+  setOutput: vi.fn()
+}))
 vi.mock('@actions/github', () => ({
   context: {
     repo: {
@@ -80,7 +81,10 @@ describe('GitHubService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     githubService = new GitHubService('test-token')
-    ;(githubService.octokit as typeof mockOctokit) = mockOctokit
+    Object.defineProperty(githubService, 'octokit', {
+      value: mockOctokit,
+      writable: true
+    })
   })
 
   describe('getPullRequestLabels', () => {
@@ -143,7 +147,7 @@ describe('GitHubService', () => {
   })
 
   describe('createRelease', () => {
-    it('should create a release', async () => {
+    it('should create a release for a single package', async () => {
       const mockRelease = {
         data: { html_url: 'https://github.com/test/release' }
       }
@@ -175,6 +179,68 @@ describe('GitHubService', () => {
         body: '## Changes\n\n- feat(core): add feature',
         draft: false,
         prerelease: false
+      })
+    })
+
+    it('should create releases for multiple packages', async () => {
+      const mockRelease = {
+        data: { html_url: 'https://github.com/test/release' }
+      }
+      mockOctokit.repos.createRelease.mockResolvedValue(mockRelease)
+      const changes: PackageChanges[] = [
+        {
+          path: 'packages/core',
+          currentVersion: '1.0.0',
+          newVersion: '1.1.0',
+          commits: [
+            {
+              type: 'feat',
+              scope: 'core',
+              breaking: false,
+              message: 'feat(core): add feature',
+              hash: 'abc123'
+            }
+          ],
+          changelog: '## Changes\n\n- feat(core): add feature'
+        },
+        {
+          path: 'packages/utils',
+          currentVersion: '2.0.0',
+          newVersion: '2.1.0-rc.1',
+          commits: [
+            {
+              type: 'feat',
+              scope: 'utils',
+              breaking: false,
+              message: 'feat(utils): add utility',
+              hash: 'def456'
+            }
+          ],
+          changelog: '## Changes\n\n- feat(utils): add utility'
+        }
+      ]
+
+      await githubService.createRelease(changes)
+
+      // Verify both releases were created
+      expect(mockOctokit.repos.createRelease).toHaveBeenCalledTimes(2)
+      expect(mockOctokit.repos.createRelease).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        tag_name: 'packages/core-v1.1.0',
+        name: 'packages/core v1.1.0',
+        body: '## Changes\n\n- feat(core): add feature',
+        draft: false,
+        prerelease: false
+      })
+      expect(mockOctokit.repos.createRelease).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        tag_name: 'packages/utils-v2.1.0-rc.1',
+        name: 'packages/utils v2.1.0-rc.1',
+        body: '## Changes\n\n- feat(utils): add utility',
+        draft: false,
+        prerelease: true
       })
     })
 

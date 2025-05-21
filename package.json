@@ -11,6 +11,7 @@
     "format:write": "pnpx prettier --write .",
     "format:check": "pnpx prettier --check .",
     "lint": "pnpx eslint .",
+    "lint:super": "docker run -e LOG_LEVEL=DEBUG -e DEFAULT_BRANCH=main -e FILTER_REGEX_EXCLUDE=dist/**/* -e VALIDATE_ALL_CODEBASE=true -e VALIDATE_JAVASCRIPT_ES=false -e VALIDATE_JAVASCRIPT_STANDARD=false -e VALIDATE_JSCPD=false -e VALIDATE_TYPESCRIPT_ES=false -e VALIDATE_JSON=false -e VALIDATE_TYPESCRIPT_STANDARD=false -e RUN_LOCAL=true -v .:/tmp/lint --platform linux/amd64 ghcr.io/super-linter/super-linter:latest",
     "local-action": "pnpx @github/local-action . src/main.ts .env",
     "package": "rollup --config rollup.config.ts --configPlugin @rollup/plugin-typescript",
     "package:watch": "pnpm run package -- --watch",

@@ -1,5 +1,6 @@
 import { Octokit } from '@octokit/rest'
 import { context } from '@actions/github'
+import * as core from '@actions/core'
 import { ReleaseContext, PackageChanges } from './types.js'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -88,6 +89,20 @@ export class GitHubService {
   }
 
   async createRelease(changes: PackageChanges[]): Promise<void> {
+    // Set outputs based on number of packages
+    if (changes.length === 1) {
+      const change = changes[0]
+      core.setOutput('version', change.newVersion)
+      core.setOutput('pre-release', change.newVersion.includes('-rc.'))
+    } else {
+      const versions = changes.map((change) => ({
+        path: change.path,
+        version: change.newVersion,
+        'pre-release': change.newVersion.includes('-rc.')
+      }))
+      core.setOutput('versions', JSON.stringify(versions))
+    }
+
     for (const change of changes) {
       const tagName = `${change.path}-v${change.newVersion}`
       const releaseName = `${change.path} v${change.newVersion}`

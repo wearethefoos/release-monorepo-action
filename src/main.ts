@@ -20,7 +20,7 @@ export async function run(): Promise<void> {
     const token = core.getInput('token', { required: true })
     const rootDir = core.getInput('root-dir', { required: false })
     const manifestFile = core.getInput('manifest-file', { required: true })
-    const createPreReleases = core.getInput('create-pre-releases') === 'true'
+    const createPreRelease = core.getInput('create-pre-release') === 'true'
     const preReleaseLabel = core.getInput('pre-release-label')
 
     const github = new GitHubService(token)
@@ -34,7 +34,7 @@ export async function run(): Promise<void> {
 
     // Check if this is a pre-release PR
     const isPreRelease = labels.includes(preReleaseLabel)
-    if (!createPreReleases && isPreRelease) {
+    if (!createPreRelease && isPreRelease) {
       core.info(
         'Pre-releases are disabled and this is a pre-release PR, skipping'
       )

@@ -18,7 +18,7 @@ inputs:
     description: 'The manifest file to use, relative to the root-dir'
     required: true
     default: '.release-manifest.json'
-  create-pre-releases:
+  create-pre-release:
     description: 'Whether to create pre-releases from pull requests'
     required: false
     default: 'false'

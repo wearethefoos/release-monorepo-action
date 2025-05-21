@@ -40,7 +40,7 @@ describe('main.ts', () => {
           return 'test-token'
         case 'manifest-file':
           return '.release-manifest.json'
-        case 'create-pre-releases':
+        case 'create-pre-release':
           return 'false'
         case 'pre-release-label':
           return 'Pre-Release'
@@ -73,7 +73,7 @@ describe('main.ts', () => {
     githubServiceMock.updatePackageVersion.mockResolvedValue(undefined)
     githubServiceMock.createRelease.mockResolvedValue(undefined)
     core.getInput.mockImplementation((name: string) => {
-      if (name === 'create-pre-releases') return 'true'
+      if (name === 'create-pre-release') return 'true'
       if (name === 'pre-release-label') return 'Pre-Release'
       return ''
     })
@@ -126,7 +126,7 @@ describe('main.ts', () => {
   it('should skip if pre-releases are disabled and PR is labeled as pre-release', async () => {
     githubServiceMock.getPullRequestLabels.mockResolvedValue(['Pre-Release'])
     core.getInput.mockImplementation((name: string) => {
-      if (name === 'create-pre-releases') return 'false'
+      if (name === 'create-pre-release') return 'false'
       if (name === 'pre-release-label') return 'Pre-Release'
       return ''
     })

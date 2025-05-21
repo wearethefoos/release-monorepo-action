@@ -17,16 +17,19 @@ accordingly.
 | Input                 | Description                                           | Required | Default                  |
 | --------------------- | ----------------------------------------------------- | -------- | ------------------------ |
 | `token`               | GitHub token for authentication                       | Yes      | -                        |
+| `root-dir`            | Root directory for the release                        | Yes      | `.`                      |
 | `manifest-file`       | Path to the manifest file containing package versions | Yes      | `.release-manifest.json` |
 | `create-pre-releases` | Whether to create pre-releases from pull requests     | No       | `false`                  |
 | `pre-release-label`   | The PR label to use for pre-releases                  | No       | `Pre-Release`            |
 
 ## Outputs
 
-| Output        | Description                           |
-| ------------- | ------------------------------------- |
-| `version`     | The version that was released         |
-| `pre-release` | Whether the release was a pre-release |
+| Output         | Description                                                   |
+| -------------- | ------------------------------------------------------------- |
+| `version`      | The version that was released                                 |
+| `pre-release`  | Whether the release was a pre-release                         |
+| `versions`     | The versions that were released (e.g. from a monorepo)        |
+| `pre-releases` | Whether the releases were pre-releases (e.g. from a monorepo) |
 
 ## Manifest File Format
 
