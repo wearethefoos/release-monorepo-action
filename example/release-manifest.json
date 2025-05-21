@@ -1,0 +1,5 @@
+{
+  "apps/node-app": "1.0.0",
+  "apps/rust-app": "1.0.0",
+  "apps/simple-app": "1.0.0"
+}

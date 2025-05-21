@@ -38744,6 +38744,7 @@ function generateChangelog(commits) {
 async function run() {
     try {
         const token = coreExports.getInput('token', { required: true });
+        const rootDir = coreExports.getInput('root-dir', { required: false });
         const manifestFile = coreExports.getInput('manifest-file', { required: true });
         const createPreReleases = coreExports.getInput('create-pre-releases') === 'true';
         const preReleaseLabel = coreExports.getInput('pre-release-label');
@@ -38761,13 +38762,13 @@ async function run() {
             return;
         }
         // Read and parse the manifest file
-        const manifestContent = fs.readFileSync(manifestFile, 'utf-8');
+        const manifestContent = fs.readFileSync(path__default.join(rootDir, manifestFile), 'utf-8');
         const manifest = JSON.parse(manifestContent);
         const changes = [];
         // Process each package in the manifest
         for (const [packagePath, currentVersion] of Object.entries(manifest)) {
             // Get commits for this package
-            const commitMessages = await github.getCommitsSinceLastRelease(packagePath);
+            const commitMessages = await github.getCommitsSinceLastRelease(path__default.join(rootDir, packagePath));
             if (commitMessages.length === 0) {
                 continue;
             }
@@ -38786,7 +38787,7 @@ async function run() {
             // Generate changelog
             const changelog = generateChangelog(commits);
             changes.push({
-                path: packagePath,
+                path: path__default.join(rootDir, packagePath),
                 currentVersion,
                 newVersion,
                 commits,

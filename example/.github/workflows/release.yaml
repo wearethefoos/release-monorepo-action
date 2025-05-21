@@ -1,0 +1,17 @@
+name: Release
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Release
+        uses: wearethefoos/release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

@@ -8,6 +8,7 @@ import {
   generateChangelog
 } from './version.js'
 import { PackageManifest, ConventionalCommit, PackageChanges } from './types.js'
+import path from 'path'
 
 /**
  * The main function for the action.
@@ -17,6 +18,7 @@ import { PackageManifest, ConventionalCommit, PackageChanges } from './types.js'
 export async function run(): Promise<void> {
   try {
     const token = core.getInput('token', { required: true })
+    const rootDir = core.getInput('root-dir', { required: false })
     const manifestFile = core.getInput('manifest-file', { required: true })
     const createPreReleases = core.getInput('create-pre-releases') === 'true'
     const preReleaseLabel = core.getInput('pre-release-label')
@@ -40,7 +42,10 @@ export async function run(): Promise<void> {
     }
 
     // Read and parse the manifest file
-    const manifestContent = fs.readFileSync(manifestFile, 'utf-8')
+    const manifestContent = fs.readFileSync(
+      path.join(rootDir, manifestFile),
+      'utf-8'
+    )
     const manifest: PackageManifest = JSON.parse(manifestContent)
 
     const changes: PackageChanges[] = []
@@ -48,8 +53,9 @@ export async function run(): Promise<void> {
     // Process each package in the manifest
     for (const [packagePath, currentVersion] of Object.entries(manifest)) {
       // Get commits for this package
-      const commitMessages =
-        await github.getCommitsSinceLastRelease(packagePath)
+      const commitMessages = await github.getCommitsSinceLastRelease(
+        path.join(rootDir, packagePath)
+      )
       if (commitMessages.length === 0) {
         continue
       }
@@ -73,7 +79,7 @@ export async function run(): Promise<void> {
       const changelog = generateChangelog(commits)
 
       changes.push({
-        path: packagePath,
+        path: path.join(rootDir, packagePath),
         currentVersion,
         newVersion,
         commits,

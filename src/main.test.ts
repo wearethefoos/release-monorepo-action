@@ -44,6 +44,8 @@ describe('main.ts', () => {
           return 'false'
         case 'pre-release-label':
           return 'Pre-Release'
+        case 'root-dir':
+          return '.'
         default:
           return ''
       }

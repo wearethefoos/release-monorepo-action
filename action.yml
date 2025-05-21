@@ -10,8 +10,12 @@ inputs:
   token:
     description: 'GitHub token for authentication'
     required: true
+  root-dir:
+    description: 'The root directory to use for the release'
+    required: false
+    default: '.'
   manifest-file:
-    description: 'The manifest file to use'
+    description: 'The manifest file to use, relative to the root-dir'
     required: true
     default: '.release-manifest.json'
   create-pre-releases:
