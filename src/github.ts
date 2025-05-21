@@ -163,8 +163,6 @@ export class GitHubService {
   }
 
   async getCommitsSinceLastRelease(packagePath: string): Promise<string[]> {
-    core.info(`Getting commits since last release for "${packagePath}" ...`)
-
     // Get all releases for the repository
     const { data: releases } = await this.octokit.repos.listReleases({
       owner: this.releaseContext.owner,
@@ -185,9 +183,13 @@ export class GitHubService {
     } else {
       // Get total commit count and use that to look back
       const totalCommits = await this.getCommitCount()
-      const lookbackCount = Math.min(50, totalCommits)
+      const lookbackCount = Math.min(50, totalCommits - 1)
       base = `HEAD~${lookbackCount}`
     }
+
+    core.info(
+      `Getting commits on ${this.releaseContext.owner}/${this.releaseContext.repo} since last release for "${packagePath}" with base ${base} and head ${this.releaseContext.headRef}...`
+    )
 
     const { data: commits } =
       await this.octokit.repos.compareCommitsWithBasehead({

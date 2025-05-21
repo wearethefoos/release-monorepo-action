@@ -230,7 +230,7 @@ describe('GitHubService', () => {
         {
           owner: 'test-owner',
           repo: 'test-repo',
-          basehead: 'HEAD~50..test-head'
+          basehead: 'HEAD~49..test-head'
         }
       )
     })
@@ -336,7 +336,7 @@ describe('GitHubService', () => {
         {
           owner: 'test-owner',
           repo: 'test-repo',
-          basehead: 'HEAD~50..test-head'
+          basehead: 'HEAD~49..test-head'
         }
       )
     })
