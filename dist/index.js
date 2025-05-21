@@ -35930,7 +35930,10 @@ class GitHubService {
         return commits.commits
             .filter((commit) => {
             // Check if any files in the commit are within the package path
-            return commit.files?.some((file) => file.filename.startsWith(packagePath));
+            return commit.files?.some((file) => {
+                coreExports.info(`Checking commit ${commit.sha} for ${packagePath} in ${file.filename}`);
+                return file.filename.startsWith(packagePath);
+            });
         })
             .map((commit) => commit.commit.message);
     }
