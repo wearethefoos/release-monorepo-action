@@ -5,37 +5,18 @@ import nodeResolve from '@rollup/plugin-node-resolve'
 import typescript from '@rollup/plugin-typescript'
 
 const config = {
-  input: {
-    index: 'src/index.ts',
-    main: 'src/main.ts',
-    github: 'src/github.ts',
-    version: 'src/version.ts',
-    types: 'src/types.ts'
-  },
+  input: 'src/index.ts',
   output: {
     esModule: true,
-    dir: 'dist',
+    file: 'dist/index.js',
     format: 'es',
-    sourcemap: true,
-    preserveModules: true
+    sourcemap: true
   },
-  external: [
-    '@actions/core',
-    '@actions/github',
-    '@octokit/rest',
-    'semver',
-    '@iarna/toml',
-    'tslib'
-  ],
   plugins: [
     typescript({
-      tsconfig: 'tsconfig.build.json',
-      sourceMap: true
+      tsconfig: 'tsconfig.build.json'
     }),
-    nodeResolve({
-      preferBuiltins: true,
-      extensions: ['.ts', '.js']
-    }),
+    nodeResolve({ preferBuiltins: true }),
     commonjs()
   ]
 }

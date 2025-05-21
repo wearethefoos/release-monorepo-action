@@ -2,16 +2,7 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "emitDeclarationOnly": false,
-    "outDir": "./dist",
-    "declaration": true,
-    "sourceMap": true,
-    "inlineSources": true,
-    "noEmit": false,
-    "composite": false
+    "emitDeclarationOnly": false
   },
-  "exclude": ["__fixtures__", "**/*.spec.ts", "**/*.test.ts"],
-  "include": ["src/**/*.ts"]
+  "exclude": ["__fixtures__", "**/*.spec.ts", "**/*.test.ts"]
 }
