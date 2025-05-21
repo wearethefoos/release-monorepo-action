@@ -35839,6 +35839,20 @@ class GitHubService {
             .join('\n\n');
     }
     async createRelease(changes) {
+        // Set outputs based on number of packages
+        if (changes.length === 1) {
+            const change = changes[0];
+            coreExports.setOutput('version', change.newVersion);
+            coreExports.setOutput('prerelease', change.newVersion.includes('-rc.'));
+        }
+        else {
+            const versions = changes.map((change) => ({
+                path: change.path,
+                version: change.newVersion,
+                prerelease: change.newVersion.includes('-rc.')
+            }));
+            coreExports.setOutput('versions', JSON.stringify(versions));
+        }
         for (const change of changes) {
             const tagName = `${change.path}-v${change.newVersion}`;
             const releaseName = `${change.path} v${change.newVersion}`;
@@ -38653,7 +38667,7 @@ function determineVersionBump(commits) {
     }
     return highestBump;
 }
-function calculateNewVersion(currentVersion, bump, isPreRelease, preReleaseNumber) {
+function calculateNewVersion(currentVersion, bump, isPreRelease, prereleaseNumber) {
     const version = semver.parse(currentVersion);
     if (!version) {
         throw new Error(`Invalid version: ${currentVersion}`);
@@ -38746,8 +38760,8 @@ async function run() {
         const token = coreExports.getInput('token', { required: true });
         const rootDir = coreExports.getInput('root-dir', { required: false });
         const manifestFile = coreExports.getInput('manifest-file', { required: true });
-        const createPreReleases = coreExports.getInput('create-pre-releases') === 'true';
-        const preReleaseLabel = coreExports.getInput('pre-release-label');
+        const createPreRelease = coreExports.getInput('create-prerelease') === 'true';
+        const prereleaseLabel = coreExports.getInput('prerelease-label');
         const github = new GitHubService(token);
         const labels = await github.getPullRequestLabels();
         // Check if this is a release PR
@@ -38755,10 +38769,10 @@ async function run() {
             coreExports.info('This is a release PR, skipping version calculation');
             return;
         }
-        // Check if this is a pre-release PR
-        const isPreRelease = labels.includes(preReleaseLabel);
-        if (!createPreReleases && isPreRelease) {
-            coreExports.info('Pre-releases are disabled and this is a pre-release PR, skipping');
+        // Check if this is a prerelease PR
+        const isPreRelease = labels.includes(prereleaseLabel);
+        if (!createPreRelease && isPreRelease) {
+            coreExports.info('prereleases are disabled and this is a prerelease PR, skipping');
             return;
         }
         // Read and parse the manifest file
@@ -38810,7 +38824,7 @@ async function run() {
         }
         // Set outputs
         coreExports.setOutput('version', changes[0].newVersion);
-        coreExports.setOutput('pre-release', isPreRelease);
+        coreExports.setOutput('prerelease', isPreRelease);
     }
     catch (error) {
         if (error instanceof Error) {

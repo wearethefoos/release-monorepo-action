@@ -14,12 +14,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Pre-Release
-        id: pre-release
+      - name: Prerelease
+        id: prerelease
         uses: wearethefoos/release-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          create-pre-release: true
+          create-prerelease: true
 
       - name: Release
         id: release
@@ -30,5 +30,5 @@ jobs:
       - name: Print Versions
         id: print-versions
         run: |
-          echo "Pre-releases: ${{ steps.pre-release.outputs.versions }}"
-          echo "Versions: ${{ steps.release.outputs.versions }}"
+          echo "prereleases: ${{ steps.prerelease.outputs.prereleases }}"
+          echo "versions: ${{ steps.release.outputs.versions }}"

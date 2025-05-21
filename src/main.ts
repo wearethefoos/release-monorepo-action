@@ -20,8 +20,8 @@ export async function run(): Promise<void> {
     const token = core.getInput('token', { required: true })
     const rootDir = core.getInput('root-dir', { required: false })
     const manifestFile = core.getInput('manifest-file', { required: true })
-    const createPreRelease = core.getInput('create-pre-release') === 'true'
-    const preReleaseLabel = core.getInput('pre-release-label')
+    const createPreRelease = core.getInput('create-prerelease') === 'true'
+    const prereleaseLabel = core.getInput('prerelease-label')
 
     const github = new GitHubService(token)
     const labels = await github.getPullRequestLabels()
@@ -32,11 +32,11 @@ export async function run(): Promise<void> {
       return
     }
 
-    // Check if this is a pre-release PR
-    const isPreRelease = labels.includes(preReleaseLabel)
+    // Check if this is a prerelease PR
+    const isPreRelease = labels.includes(prereleaseLabel)
     if (!createPreRelease && isPreRelease) {
       core.info(
-        'Pre-releases are disabled and this is a pre-release PR, skipping'
+        'prereleases are disabled and this is a prerelease PR, skipping'
       )
       return
     }
@@ -105,7 +105,7 @@ export async function run(): Promise<void> {
 
     // Set outputs
     core.setOutput('version', changes[0].newVersion)
-    core.setOutput('pre-release', isPreRelease)
+    core.setOutput('prerelease', isPreRelease)
   } catch (error) {
     if (error instanceof Error) {
       core.setFailed(error.message)

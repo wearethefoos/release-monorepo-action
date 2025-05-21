@@ -1,35 +1,35 @@
 # Release Action
 
-A GitHub Action that creates semver releases based on conventional commits. This
+A GitHub Action that creates SemVer releases based on conventional commits. This
 action analyzes commit messages to determine version bumps and creates releases
 accordingly.
 
 ## Features
 
 - Automatically determines version bumps based on conventional commit messages
-- Supports pre-releases from pull requests
+- Supports prereleases from pull requests
 - Creates GitHub releases with changelogs
 - Updates package versions in manifest files
 - Handles multiple packages in a monorepo setup
 
 ## Inputs
 
-| Input                 | Description                                           | Required | Default                  |
-| --------------------- | ----------------------------------------------------- | -------- | ------------------------ |
-| `token`               | GitHub token for authentication                       | Yes      | -                        |
-| `root-dir`            | Root directory for the release                        | Yes      | `.`                      |
-| `manifest-file`       | Path to the manifest file containing package versions | Yes      | `.release-manifest.json` |
-| `create-pre-releases` | Whether to create pre-releases from pull requests     | No       | `false`                  |
-| `pre-release-label`   | The PR label to use for pre-releases                  | No       | `Pre-Release`            |
+| Input                | Description                                           | Required | Default                  |
+| -------------------- | ----------------------------------------------------- | -------- | ------------------------ |
+| `token`              | GitHub token for authentication                       | Yes      | -                        |
+| `root-dir`           | Root directory for the release                        | Yes      | `.`                      |
+| `manifest-file`      | Path to the manifest file containing package versions | Yes      | `.release-manifest.json` |
+| `create-prereleases` | Whether to create prereleases from pull requests      | No       | `false`                  |
+| `prerelease-label`   | The PR label to use for prereleases                   | No       | `Prerelease`             |
 
 ## Outputs
 
-| Output         | Description                                                   |
-| -------------- | ------------------------------------------------------------- |
-| `version`      | The version that was released                                 |
-| `pre-release`  | Whether the release was a pre-release                         |
-| `versions`     | The versions that were released (e.g. from a monorepo)        |
-| `pre-releases` | Whether the releases were pre-releases (e.g. from a monorepo) |
+| Output        | Description                                                  |
+| ------------- | ------------------------------------------------------------ |
+| `version`     | The version that was released                                |
+| `prerelease`  | Whether the release was a prerelease                         |
+| `versions`    | The versions that were released (e.g. from a monorepo)       |
+| `prereleases` | Whether the releases were prereleases (e.g. from a monorepo) |
 
 ## Manifest File Format
 
@@ -71,7 +71,7 @@ jobs:
           manifest-file: '.release-manifest.json'
 ```
 
-### With Pre-releases
+### With Prereleases
 
 ```yaml
 name: Release
@@ -95,16 +95,16 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           manifest-file: '.release-manifest.json'
-          create-pre-releases: true
-          pre-release-label: 'Pre-Release'
+          create-prereleases: true
+          prerelease-label: 'Prerelease'
 ```
 
 ## How It Works
 
 1. The action checks if it's running on a pull request or the main branch
 2. For pull requests:
-   - If `create-pre-releases` is false, it exits
-   - If the PR is tagged with the pre-release label, it creates a pre-release
+   - If `create-prereleases` is false, it exits
+   - If the PR is tagged with the prerelease label, it creates a prerelease
    - If the PR is tagged with "release-me", it creates a full release
 3. For each package in the manifest:
    - Gathers commits since the last merge to main

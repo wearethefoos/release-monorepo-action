@@ -18,20 +18,20 @@ inputs:
     description: 'The manifest file to use, relative to the root-dir'
     required: true
     default: '.release-manifest.json'
-  create-pre-release:
-    description: 'Whether to create pre-releases from pull requests'
+  create-prerelease:
+    description: 'Whether to create prereleases from pull requests'
     required: false
     default: 'false'
-  pre-release-label:
-    description: 'The PR label to use for pre-releases'
+  prerelease-label:
+    description: 'The PR label to use for prereleases'
     required: false
-    default: 'Pre-Release'
+    default: 'Prerelease'
 
 outputs:
   version:
     description: 'The version that was released'
-  pre-release:
-    description: 'Whether the release was a pre-release'
+  prerelease:
+    description: 'Whether the release was a prerelease'
 
 runs:
   using: node20

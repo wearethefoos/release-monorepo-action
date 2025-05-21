@@ -93,12 +93,12 @@ export class GitHubService {
     if (changes.length === 1) {
       const change = changes[0]
       core.setOutput('version', change.newVersion)
-      core.setOutput('pre-release', change.newVersion.includes('-rc.'))
+      core.setOutput('prerelease', change.newVersion.includes('-rc.'))
     } else {
       const versions = changes.map((change) => ({
         path: change.path,
         version: change.newVersion,
-        'pre-release': change.newVersion.includes('-rc.')
+        prerelease: change.newVersion.includes('-rc.')
       }))
       core.setOutput('versions', JSON.stringify(versions))
     }

@@ -59,13 +59,13 @@ jobs:
         id: checkout
         uses: actions/checkout@v4
 
-      - name: Test Pre-Release
-        id: pre-release
+      - name: Test Prerelease
+        id: prerelease
         uses: ./
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           root-dir: example
-          create-pre-release: true
+          create-prerelease: true
 
       - name: Test Release
         id: release
@@ -77,5 +77,5 @@ jobs:
       - name: Print Output
         id: output
         run: |
-          echo "Pre-releases: ${{ steps.pre-release.outputs.pre-releases }}"
+          echo "Prereleases: ${{ steps.prerelease.outputs.prereleases }}"
           echo "Versions: ${{ steps.release.outputs.versions }}"

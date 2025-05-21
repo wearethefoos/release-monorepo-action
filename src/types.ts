@@ -1,7 +1,7 @@
 export interface ReleaseConfig {
   manifestFile: string
   createPreReleases: boolean
-  preReleaseLabel: string
+  prereleaseLabel: string
 }
 
 export interface PackageManifest {
@@ -40,11 +40,11 @@ export type VersionBump = 'major' | 'minor' | 'patch' | 'none'
 export interface VersionInfo {
   version: string
   isPreRelease: boolean
-  preReleaseNumber?: number
+  prereleaseNumber?: number
 }
 
 export interface ReleaseResult {
   version: string
-  preRelease: boolean
+  prerelease: boolean
   changes: PackageChanges[]
 }

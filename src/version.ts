@@ -70,7 +70,7 @@ export function calculateNewVersion(
   currentVersion: string,
   bump: VersionBump,
   isPreRelease: boolean,
-  preReleaseNumber?: number
+  prereleaseNumber?: number
 ): string {
   const version = semver.parse(currentVersion)
   if (!version) {
@@ -94,7 +94,7 @@ export function calculateNewVersion(
   }
 
   if (isPreRelease) {
-    newVersion = `${newVersion}-rc.${preReleaseNumber || 1}`
+    newVersion = `${newVersion}-rc.${prereleaseNumber || 1}`
   }
 
   return newVersion

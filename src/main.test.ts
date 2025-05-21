@@ -40,10 +40,10 @@ describe('main.ts', () => {
           return 'test-token'
         case 'manifest-file':
           return '.release-manifest.json'
-        case 'create-pre-release':
+        case 'create-prerelease':
           return 'false'
-        case 'pre-release-label':
-          return 'Pre-Release'
+        case 'prerelease-label':
+          return 'Prerelease'
         case 'root-dir':
           return '.'
         default:
@@ -65,16 +65,16 @@ describe('main.ts', () => {
     )
   })
 
-  it('should handle pre-release PRs correctly', async () => {
+  it('should handle prerelease PRs correctly', async () => {
     const mockCommits = ['feat(core): add new feature', 'fix(utils): fix bug']
-    githubServiceMock.getPullRequestLabels.mockResolvedValue(['Pre-Release'])
+    githubServiceMock.getPullRequestLabels.mockResolvedValue(['Prerelease'])
     githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue(mockCommits)
     githubServiceMock.createReleasePullRequest.mockResolvedValue(undefined)
     githubServiceMock.updatePackageVersion.mockResolvedValue(undefined)
     githubServiceMock.createRelease.mockResolvedValue(undefined)
     core.getInput.mockImplementation((name: string) => {
-      if (name === 'create-pre-release') return 'true'
-      if (name === 'pre-release-label') return 'Pre-Release'
+      if (name === 'create-prerelease') return 'true'
+      if (name === 'prerelease-label') return 'Prerelease'
       return ''
     })
     await run()
@@ -84,7 +84,7 @@ describe('main.ts', () => {
       await githubServiceMock.createReleasePullRequest()
     )
     expect(core.setOutput).toHaveBeenCalledWith('version', expect.any(String))
-    expect(core.setOutput).toHaveBeenCalledWith('pre-release', true)
+    expect(core.setOutput).toHaveBeenCalledWith('prerelease', true)
   })
 
   it('should handle regular releases correctly', async () => {
@@ -96,7 +96,7 @@ describe('main.ts', () => {
     githubServiceMock.createReleasePullRequest.mockResolvedValue(undefined)
     await run()
     expect(core.setOutput).toHaveBeenCalledWith('version', expect.any(String))
-    expect(core.setOutput).toHaveBeenCalledWith('pre-release', false)
+    expect(core.setOutput).toHaveBeenCalledWith('prerelease', false)
   })
 
   it('should handle errors gracefully', async () => {
@@ -123,16 +123,16 @@ describe('main.ts', () => {
     )
   })
 
-  it('should skip if pre-releases are disabled and PR is labeled as pre-release', async () => {
-    githubServiceMock.getPullRequestLabels.mockResolvedValue(['Pre-Release'])
+  it('should skip if prereleases are disabled and PR is labeled as prerelease', async () => {
+    githubServiceMock.getPullRequestLabels.mockResolvedValue(['Prerelease'])
     core.getInput.mockImplementation((name: string) => {
-      if (name === 'create-pre-release') return 'false'
-      if (name === 'pre-release-label') return 'Pre-Release'
+      if (name === 'create-prerelease') return 'false'
+      if (name === 'prerelease-label') return 'Prerelease'
       return ''
     })
     await run()
     expect(core.info).toHaveBeenCalledWith(
-      'Pre-releases are disabled and this is a pre-release PR, skipping'
+      'prereleases are disabled and this is a prerelease PR, skipping'
     )
   })
 

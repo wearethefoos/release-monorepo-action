@@ -71,7 +71,7 @@ describe('version.ts', () => {
     it('keeps version for none', () => {
       expect(calculateNewVersion('1.2.3', 'none', false)).toBe('1.2.3')
     })
-    it('adds rc for pre-release', () => {
+    it('adds rc for prerelease', () => {
       expect(calculateNewVersion('1.2.3', 'patch', true, 2)).toBe('1.2.4-rc.2')
     })
   })
