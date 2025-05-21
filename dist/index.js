@@ -35925,7 +35925,7 @@ class GitHubService {
         const { data: commits } = await this.octokit.repos.compareCommitsWithBasehead({
             owner: this.releaseContext.owner,
             repo: this.releaseContext.repo,
-            basehead: `${base}..${this.releaseContext.headRef}`
+            basehead: `${base}...${this.releaseContext.headRef}`
         });
         return commits.commits
             .filter((commit) => {

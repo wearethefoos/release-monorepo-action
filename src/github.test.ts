@@ -189,7 +189,7 @@ describe('GitHubService', () => {
         {
           owner: 'test-owner',
           repo: 'test-repo',
-          basehead: 'packages/core-v1.0.0..test-head'
+          basehead: 'packages/core-v1.0.0...test-head'
         }
       )
     })
@@ -230,7 +230,7 @@ describe('GitHubService', () => {
         {
           owner: 'test-owner',
           repo: 'test-repo',
-          basehead: 'HEAD~49..test-head'
+          basehead: 'HEAD~49...test-head'
         }
       )
     })
@@ -270,7 +270,7 @@ describe('GitHubService', () => {
         {
           owner: 'test-owner',
           repo: 'test-repo',
-          basehead: 'packages/core-v1.0.0..test-head'
+          basehead: 'packages/core-v1.0.0...test-head'
         }
       )
     })
@@ -336,7 +336,7 @@ describe('GitHubService', () => {
         {
           owner: 'test-owner',
           repo: 'test-repo',
-          basehead: 'HEAD~49..test-head'
+          basehead: 'HEAD~49...test-head'
         }
       )
     })
@@ -377,7 +377,7 @@ describe('GitHubService', () => {
         {
           owner: 'test-owner',
           repo: 'test-repo',
-          basehead: 'HEAD~50..test-head'
+          basehead: 'HEAD~50...test-head'
         }
       )
     })
