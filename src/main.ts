@@ -54,7 +54,7 @@ export async function run(): Promise<void> {
     for (const [packagePath, currentVersion] of Object.entries(manifest)) {
       // Get commits for this package
       const commitMessages = await github.getCommitsSinceLastRelease(
-        path.join(rootDir, packagePath)
+        path.join(rootDir, packagePath).replace(/^\.\//, '')
       )
       if (commitMessages.length === 0) {
         continue
@@ -79,7 +79,7 @@ export async function run(): Promise<void> {
       const changelog = generateChangelog(commits)
 
       changes.push({
-        path: path.join(rootDir, packagePath),
+        path: path.join(rootDir, packagePath).replace(/^\.\//, ''),
         currentVersion,
         newVersion,
         commits,

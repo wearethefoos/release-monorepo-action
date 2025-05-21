@@ -38827,7 +38827,7 @@ async function run() {
         // Process each package in the manifest
         for (const [packagePath, currentVersion] of Object.entries(manifest)) {
             // Get commits for this package
-            const commitMessages = await github.getCommitsSinceLastRelease(path__default.join(rootDir, packagePath));
+            const commitMessages = await github.getCommitsSinceLastRelease(path__default.join(rootDir, packagePath).replace(/^\.\//, ''));
             if (commitMessages.length === 0) {
                 continue;
             }
@@ -38846,7 +38846,7 @@ async function run() {
             // Generate changelog
             const changelog = generateChangelog(commits);
             changes.push({
-                path: path__default.join(rootDir, packagePath),
+                path: path__default.join(rootDir, packagePath).replace(/^\.\//, ''),
                 currentVersion,
                 newVersion,
                 commits,
