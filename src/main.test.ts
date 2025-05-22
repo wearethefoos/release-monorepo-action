@@ -61,9 +61,7 @@ describe('main.ts', () => {
     githubServiceMock.getPullRequestLabels.mockResolvedValue([])
     githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue([])
     await run()
-    expect(core.info).toHaveBeenCalledWith(
-      'No changes requiring version updates found'
-    )
+    expect(core.info).toHaveBeenCalledWith('No new commits found')
   })
 
   it('should handle prerelease PRs correctly', async () => {
@@ -150,9 +148,7 @@ describe('main.ts', () => {
     githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue([])
     githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue([])
     await run()
-    expect(core.info).toHaveBeenCalledWith(
-      'No changes requiring version updates found'
-    )
+    expect(core.info).toHaveBeenCalledWith('No new commits found')
   })
 
   it('should handle unknown errors', async () => {
@@ -176,8 +172,6 @@ describe('main.ts', () => {
       })
     )
     await run()
-    expect(core.info).toHaveBeenCalledWith(
-      'No changes requiring version updates found'
-    )
+    expect(core.info).toHaveBeenCalledWith('No new commits found')
   })
 })

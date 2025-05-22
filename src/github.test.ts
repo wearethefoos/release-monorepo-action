@@ -164,36 +164,60 @@ describe('GitHubService', () => {
         ]
       }
       mockOctokit.repos.listReleases.mockResolvedValue(mockReleases)
-      mockOctokit.request.mockResolvedValue({
-        data: {
-          commits: [
-            {
-              commit: { message: 'feat: add feature' },
-              files: [{ filename: 'packages/core/src/index.ts' }]
-            },
-            {
-              commit: { message: 'fix: fix bug' },
-              files: [{ filename: 'packages/core/src/utils.ts' }]
-            }
-          ]
-        },
-        headers: {}
-      })
+      mockOctokit.request
+        .mockResolvedValueOnce({
+          data: {
+            commits: [
+              { sha: 'abc123', commit: { message: 'feat: add feature' } },
+              { sha: 'def456', commit: { message: 'fix: fix bug' } }
+            ]
+          },
+          headers: {}
+        })
+        .mockResolvedValueOnce({
+          data: {
+            files: [{ filename: 'packages/core/src/index.ts' }]
+          }
+        })
+        .mockResolvedValueOnce({
+          data: {
+            files: [{ filename: 'packages/core/src/utils.ts' }]
+          }
+        })
 
       const commits =
         await githubService.getCommitsSinceLastRelease('packages/core')
       expect(commits).toEqual(['feat: add feature', 'fix: fix bug'])
-      expect(mockOctokit.request).toHaveBeenCalledWith(
+      expect(mockOctokit.request).toHaveBeenNthCalledWith(
+        1,
         'GET /repos/{owner}/{repo}/compare/{basehead}',
         {
           owner: 'test-owner',
           repo: 'test-repo',
           basehead: 'packages/core-v1.0.0...test-head',
           mediaType: {
-            format: 'diff'
+            format: 'json'
           },
           per_page: 100,
           page: 1
+        }
+      )
+      expect(mockOctokit.request).toHaveBeenNthCalledWith(
+        2,
+        'GET /repos/{owner}/{repo}/commits/{ref}',
+        {
+          owner: 'test-owner',
+          repo: 'test-repo',
+          ref: 'abc123'
+        }
+      )
+      expect(mockOctokit.request).toHaveBeenNthCalledWith(
+        3,
+        'GET /repos/{owner}/{repo}/commits/{ref}',
+        {
+          owner: 'test-owner',
+          repo: 'test-repo',
+          ref: 'def456'
         }
       )
     })
@@ -217,13 +241,15 @@ describe('GitHubService', () => {
         .mockResolvedValueOnce({
           data: {
             commits: [
-              {
-                commit: { message: 'feat: add feature' },
-                files: [{ filename: 'packages/core/src/index.ts' }]
-              }
+              { sha: 'abc123', commit: { message: 'feat: add feature' } }
             ]
           },
           headers: {}
+        })
+        .mockResolvedValueOnce({
+          data: {
+            files: [{ filename: 'packages/core/src/index.ts' }]
+          }
         })
 
       const commits =
@@ -247,10 +273,19 @@ describe('GitHubService', () => {
           repo: 'test-repo',
           basehead: 'HEAD~49...test-head',
           mediaType: {
-            format: 'diff'
+            format: 'json'
           },
           per_page: 100,
           page: 1
+        }
+      )
+      expect(mockOctokit.request).toHaveBeenNthCalledWith(
+        3,
+        'GET /repos/{owner}/{repo}/commits/{ref}',
+        {
+          owner: 'test-owner',
+          repo: 'test-repo',
+          ref: 'abc123'
         }
       )
     })
@@ -269,32 +304,45 @@ describe('GitHubService', () => {
         ]
       }
       mockOctokit.repos.listReleases.mockResolvedValue(mockReleases)
-      mockOctokit.request.mockResolvedValue({
-        data: {
-          commits: [
-            {
-              commit: { message: 'feat: add feature' },
-              files: [{ filename: 'packages/core/src/index.ts' }]
-            }
-          ]
-        },
-        headers: {}
-      })
+      mockOctokit.request
+        .mockResolvedValueOnce({
+          data: {
+            commits: [
+              { sha: 'abc123', commit: { message: 'feat: add feature' } }
+            ]
+          },
+          headers: {}
+        })
+        .mockResolvedValueOnce({
+          data: {
+            files: [{ filename: 'packages/core/src/index.ts' }]
+          }
+        })
 
       const commits =
         await githubService.getCommitsSinceLastRelease('packages/core')
       expect(commits).toEqual(['feat: add feature'])
-      expect(mockOctokit.request).toHaveBeenCalledWith(
+      expect(mockOctokit.request).toHaveBeenNthCalledWith(
+        1,
         'GET /repos/{owner}/{repo}/compare/{basehead}',
         {
           owner: 'test-owner',
           repo: 'test-repo',
           basehead: 'packages/core-v1.0.0...test-head',
           mediaType: {
-            format: 'diff'
+            format: 'json'
           },
           per_page: 100,
           page: 1
+        }
+      )
+      expect(mockOctokit.request).toHaveBeenNthCalledWith(
+        2,
+        'GET /repos/{owner}/{repo}/commits/{ref}',
+        {
+          owner: 'test-owner',
+          repo: 'test-repo',
+          ref: 'abc123'
         }
       )
     })
@@ -347,13 +395,15 @@ describe('GitHubService', () => {
         .mockResolvedValueOnce({
           data: {
             commits: [
-              {
-                commit: { message: 'feat: add feature' },
-                files: [{ filename: 'packages/core/src/index.ts' }]
-              }
+              { sha: 'abc123', commit: { message: 'feat: add feature' } }
             ]
           },
           headers: {}
+        })
+        .mockResolvedValueOnce({
+          data: {
+            files: [{ filename: 'packages/core/src/index.ts' }]
+          }
         })
 
       const commits =
@@ -377,10 +427,19 @@ describe('GitHubService', () => {
           repo: 'test-repo',
           basehead: 'HEAD~49...test-head',
           mediaType: {
-            format: 'diff'
+            format: 'json'
           },
           per_page: 100,
           page: 1
+        }
+      )
+      expect(mockOctokit.request).toHaveBeenNthCalledWith(
+        3,
+        'GET /repos/{owner}/{repo}/commits/{ref}',
+        {
+          owner: 'test-owner',
+          repo: 'test-repo',
+          ref: 'abc123'
         }
       )
     })
@@ -404,29 +463,41 @@ describe('GitHubService', () => {
         .mockResolvedValueOnce({
           data: {
             commits: [
-              {
-                commit: { message: 'feat: add feature' },
-                files: [{ filename: 'packages/core/src/index.ts' }]
-              }
+              { sha: 'abc123', commit: { message: 'feat: add feature' } }
             ]
           },
           headers: {}
+        })
+        .mockResolvedValueOnce({
+          data: {
+            files: [{ filename: 'packages/core/src/index.ts' }]
+          }
         })
 
       const commits =
         await githubService.getCommitsSinceLastRelease('packages/core')
       expect(commits).toEqual(['feat: add feature'])
-      expect(mockOctokit.request).toHaveBeenCalledWith(
+      expect(mockOctokit.request).toHaveBeenNthCalledWith(
+        2,
         'GET /repos/{owner}/{repo}/compare/{basehead}',
         {
           owner: 'test-owner',
           repo: 'test-repo',
           basehead: 'HEAD~49...test-head',
           mediaType: {
-            format: 'diff'
+            format: 'json'
           },
           per_page: 100,
           page: 1
+        }
+      )
+      expect(mockOctokit.request).toHaveBeenNthCalledWith(
+        3,
+        'GET /repos/{owner}/{repo}/commits/{ref}',
+        {
+          owner: 'test-owner',
+          repo: 'test-repo',
+          ref: 'abc123'
         }
       )
     })

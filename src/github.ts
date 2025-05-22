@@ -5,6 +5,7 @@ import { ReleaseContext, PackageChanges } from './types.js'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as toml from '@iarna/toml'
+import { determineVersionBump, parseConventionalCommit } from './version.js'
 
 interface CommitFile {
   filename: string
@@ -154,8 +155,11 @@ export class GitHubService {
     }
 
     for (const change of changes) {
-      const tagName = `${change.path}-v${change.newVersion}`
-      const releaseName = `${change.path} v${change.newVersion}`
+      const versionBase = `v${change.newVersion}`
+      const tagName =
+        change.path === '.' ? versionBase : `${change.path}-${versionBase}`
+      const releaseName =
+        change.path === '.' ? versionBase : `${change.path} ${versionBase}`
 
       // Create tag
       await this.octokit.git.createRef({
@@ -182,7 +186,9 @@ export class GitHubService {
    * Fetch all commits (with files) since the last release (or fallback) for the repo.
    * Returns the array of commits (with files) for further filtering.
    */
-  async getAllCommitsSinceLastRelease(): Promise<Commit[]> {
+  async getAllCommitsSinceLastRelease(
+    checkPaths: boolean = true
+  ): Promise<Commit[]> {
     // Get all releases for the repository
     const { data: releases } = await this.octokit.repos.listReleases({
       owner: this.releaseContext.owner,
@@ -204,7 +210,7 @@ export class GitHubService {
     }
 
     core.info(
-      `Getting all commits on ${this.releaseContext.owner}/${this.releaseContext.repo} since last release with base ${base} and head ${this.releaseContext.headRef}...`
+      `Getting all commits since last release with base ${base} and head ${this.releaseContext.headRef}...`
     )
 
     let allCommits: Commit[] = []
@@ -220,29 +226,49 @@ export class GitHubService {
           repo: this.releaseContext.repo,
           basehead: `${base}...${this.releaseContext.headRef}`,
           mediaType: {
-            format: 'diff'
+            format: 'json'
           },
           per_page: 100,
           page
         }
       )
 
-      const commits = response.data.commits
-      core.info(`Received ${commits.length} commits on page ${page}`)
+      // If there are no commits in the response, break early
+      if (!response.data.commits || response.data.commits.length === 0) {
+        break
+      }
 
-      // Log detailed information about the first commit to debug files array
-      if (commits.length > 0) {
-        const firstCommit = commits[0]
-        core.info(`First commit on page ${page}:`)
-        core.info(`- SHA: ${firstCommit.sha}`)
-        core.info(`- Message: ${firstCommit.commit.message}`)
-        core.info(`- Files array exists: ${!!firstCommit.files}`)
-        core.info(
-          `- Files array length: ${firstCommit.files ? firstCommit.files.length : 0}`
+      // filter commits to only include those that would be relevant for a version bump
+      const commits = response.data.commits.filter((commit) => {
+        const conventionalCommit = parseConventionalCommit(
+          commit.commit.message
         )
-        // Note: this could bite us if we have a commit with more than 300 files.
-        if (firstCommit.files && firstCommit.files.length > 0) {
-          core.info(`- First file: ${firstCommit.files[0].filename}`)
+
+        return determineVersionBump([conventionalCommit]) !== 'none'
+      })
+
+      core.info(
+        `Considering ${commits.length}/${response.data.commits.length} relevant commits on page ${page}`
+      )
+
+      // If there are no relevant commits, break early
+      if (commits.length === 0) {
+        break
+      }
+
+      // Fetch commit details for each commit to get files
+      if (checkPaths) {
+        for (const commit of commits) {
+          const commitResponse = await this.octokit.request(
+            'GET /repos/{owner}/{repo}/commits/{ref}',
+            {
+              owner: this.releaseContext.owner,
+              repo: this.releaseContext.repo,
+              ref: commit.sha
+              // No mediaType needed; default is JSON and includes files
+            }
+          )
+          commit.files = commitResponse.data.files
         }
       }
 
@@ -266,23 +292,38 @@ export class GitHubService {
     packagePath: string,
     allCommits?: Commit[]
   ): Promise<string[]> {
+    const isSubPackage = packagePath !== '.'
+
+    // If allCommits is not provided, fetch them
     if (!allCommits) {
-      allCommits = await this.getAllCommitsSinceLastRelease()
+      allCommits = await this.getAllCommitsSinceLastRelease(isSubPackage)
     }
-    return allCommits
-      .filter((commit) => {
-        // Check if any files in the commit are within the package path
+
+    // If there are no commits, return early
+    if (!allCommits || allCommits.length === 0) {
+      return []
+    }
+
+    // For root package ('.'), return all commit messages
+    if (!isSubPackage) {
+      return allCommits.map((commit) => commit.commit.message)
+    }
+
+    // For subpackages, filter commits that touch files in the package path
+    const filteredCommits = allCommits.filter((commit) => {
+      // Check if any files in the commit are within the package path
+      core.info(
+        `Checking ${commit.files?.length ?? '(no files)'} files in commit ${commit.commit.message}`
+      )
+      return commit.files?.some((file: CommitFile) => {
         core.info(
-          `Checking ${commit.files?.length ?? '(no files)'} files in commit ${commit.commit.message}`
+          `Checking commit ${commit.sha} for ${packagePath} in ${file.filename}`
         )
-        return commit.files?.some((file: CommitFile) => {
-          core.info(
-            `Checking commit ${commit.sha} for ${packagePath} in ${file.filename}`
-          )
-          return file.filename.startsWith(packagePath)
-        })
+        return file.filename.startsWith(packagePath)
       })
-      .map((commit) => commit.commit.message)
+    })
+
+    return filteredCommits.map((commit) => commit.commit.message)
   }
 
   async updatePackageVersion(

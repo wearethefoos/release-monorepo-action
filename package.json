@@ -5,6 +5,7 @@
   "description": "GitHub Action for creating semver releases based on conventional commits",
   "main": "dist/index.js",
   "scripts": {
+    "act": "pnpm run package && act --container-architecture linux/amd64 -j act-release -s GITHUB_TOKEN=\"$(gh auth token)\"",
     "bundle": "pnpm run format:write && pnpm run package",
     "ci-test": "NODE_OPTIONS=--experimental-vm-modules NODE_NO_WARNINGS=1 vitest run --coverage --coverage.reporter=json-summary",
     "coverage": "pnpx make-coverage-badge --output-path ./badges/coverage.svg",
