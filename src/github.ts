@@ -200,7 +200,7 @@ export class GitHubService {
       // Get total commit count and use that to look back
       const totalCommits = await this.getCommitCount()
       const lookbackCount = Math.min(50, totalCommits)
-      base = `HEAD~${lookbackCount}`
+      base = `HEAD~${lookbackCount - 1}`
     }
 
     core.info(
@@ -240,6 +240,7 @@ export class GitHubService {
         core.info(
           `- Files array length: ${firstCommit.files ? firstCommit.files.length : 0}`
         )
+        // Note: this could bite us if we have a commit with more than 300 files.
         if (firstCommit.files && firstCommit.files.length > 0) {
           core.info(`- First file: ${firstCommit.files[0].filename}`)
         }
