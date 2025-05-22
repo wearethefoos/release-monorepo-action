@@ -316,7 +316,7 @@ export class GitHubService {
         `Checking ${commit.files?.length ?? '(no files)'} files in commit ${commit.commit.message}`
       )
       return commit.files?.some((file: CommitFile) => {
-        core.info(
+        core.debug(
           `Checking commit ${commit.sha} for ${packagePath} in ${file.filename}`
         )
         return file.filename.startsWith(packagePath)

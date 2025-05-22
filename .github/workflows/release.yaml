@@ -1,0 +1,42 @@
+name: Release
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - edited
+      - labeled
+      - unlabeled
+      - closed
+      - reopened
+      - locked
+      - unlocked
+  push:
+    branches:
+      - main
+
+permissions: read-all
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Release
+        id: release
+        uses: ./
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          create-prerelease: true
+
+      - name: Print Versions
+        id: print-versions
+        run: |
+          echo "version: ${{ steps.release.outputs.version }}"
+          echo "prerelease: ${{ steps.release.outputs.prerelease }}"
