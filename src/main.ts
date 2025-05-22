@@ -1,14 +1,14 @@
 import * as core from '@actions/core'
 import * as fs from 'fs'
 import { GitHubService } from './github.js'
+import { PackageManifest, ConventionalCommit, PackageChanges } from './types.js'
+import path from 'path'
 import {
   parseConventionalCommit,
   determineVersionBump,
   calculateNewVersion,
   generateChangelog
 } from './version.js'
-import { PackageManifest, ConventionalCommit, PackageChanges } from './types.js'
-import path from 'path'
 
 /**
  * The main function for the action.
@@ -48,63 +48,60 @@ export async function run(): Promise<void> {
     )
     const manifest: PackageManifest = JSON.parse(manifestContent)
 
-    const changes: PackageChanges[] = []
-
-    // Process each package in the manifest
+    // Get commits for each package
+    const allCommits = await github.getAllCommitsSinceLastRelease()
+    if (!allCommits || allCommits.length === 0) {
+      core.info('No changes requiring version updates found')
+      return
+    }
+    const packageChanges: PackageChanges[] = []
     for (const [packagePath, currentVersion] of Object.entries(manifest)) {
-      // Get commits for this package
-      const commitMessages = await github.getCommitsSinceLastRelease(
-        path.join(rootDir, packagePath).replace(/^\.\//, '')
+      const commits = await github.getCommitsSinceLastRelease(
+        packagePath,
+        allCommits
       )
-      if (commitMessages.length === 0) {
+      if (commits.length === 0) {
         continue
       }
-
-      // Parse conventional commits
-      const commits: ConventionalCommit[] = commitMessages.map((message) => ({
-        ...parseConventionalCommit(message),
-        hash: '' // We don't need the hash for version calculation
-      }))
-
-      // Determine version bump
-      const bump = determineVersionBump(commits)
+      const conventionalCommits: ConventionalCommit[] = commits.map(
+        (message) => ({
+          ...parseConventionalCommit(message),
+          hash: '' // We don't need the hash for version calculation
+        })
+      )
+      const bump = determineVersionBump(conventionalCommits)
       if (bump === 'none') {
         continue
       }
-
-      // Calculate new version
       const newVersion = calculateNewVersion(currentVersion, bump, isPreRelease)
-
-      // Generate changelog
-      const changelog = generateChangelog(commits)
-
-      changes.push({
-        path: path.join(rootDir, packagePath).replace(/^\.\//, ''),
+      const changelog = generateChangelog(conventionalCommits)
+      packageChanges.push({
+        path: packagePath,
         currentVersion,
         newVersion,
-        commits,
+        commits: conventionalCommits,
         changelog
       })
     }
 
-    if (changes.length === 0) {
+    if (packageChanges.length === 0) {
       core.info('No changes requiring version updates found')
       return
     }
 
     // Update package versions and create PR if needed
-    for (const change of changes) {
+    for (const change of packageChanges) {
       await github.updatePackageVersion(change.path, change.newVersion)
     }
 
     if (isPreRelease) {
-      await github.createReleasePullRequest(changes)
+      await github.createReleasePullRequest(packageChanges)
     } else {
-      await github.createRelease(changes)
+      await github.createRelease(packageChanges)
     }
 
     // Set outputs
-    core.setOutput('version', changes[0].newVersion)
+    core.setOutput('version', packageChanges[0].newVersion)
     core.setOutput('prerelease', isPreRelease)
   } catch (error) {
     if (error instanceof Error) {

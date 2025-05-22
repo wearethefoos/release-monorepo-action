@@ -35901,15 +35901,18 @@ class GitHubService {
             });
         }
     }
-    async getCommitsSinceLastRelease(packagePath) {
+    /**
+     * Fetch all commits (with files) since the last release (or fallback) for the repo.
+     * Returns the array of commits (with files) for further filtering.
+     */
+    async getAllCommitsSinceLastRelease() {
         // Get all releases for the repository
         const { data: releases } = await this.octokit.repos.listReleases({
             owner: this.releaseContext.owner,
             repo: this.releaseContext.repo
         });
-        // Find the last release for this package
-        const packageTagPrefix = `${packagePath}-v`;
-        const lastRelease = releases.find((release) => release.tag_name.startsWith(packageTagPrefix) && !release.prerelease);
+        // Find the most recent non-prerelease release (for any package)
+        const lastRelease = releases.find((release) => !release.prerelease);
         // If no release found, get commits since the beginning
         let base;
         if (lastRelease) {
@@ -35918,16 +35921,57 @@ class GitHubService {
         else {
             // Get total commit count and use that to look back
             const totalCommits = await this.getCommitCount();
-            const lookbackCount = Math.min(50, totalCommits - 1);
+            const lookbackCount = Math.min(50, totalCommits);
             base = `HEAD~${lookbackCount}`;
         }
-        coreExports.info(`Getting commits on ${this.releaseContext.owner}/${this.releaseContext.repo} since last release for "${packagePath}" with base ${base} and head ${this.releaseContext.headRef}...`);
-        const { data: commits } = await this.octokit.repos.compareCommitsWithBasehead({
-            owner: this.releaseContext.owner,
-            repo: this.releaseContext.repo,
-            basehead: `${base}...${this.releaseContext.headRef}`
-        });
-        return commits.commits
+        coreExports.info(`Getting all commits on ${this.releaseContext.owner}/${this.releaseContext.repo} since last release with base ${base} and head ${this.releaseContext.headRef}...`);
+        let allCommits = [];
+        let page = 1;
+        let hasMorePages = true;
+        while (hasMorePages) {
+            coreExports.info(`Fetching page ${page} of commits...`);
+            const response = await this.octokit.request('GET /repos/{owner}/{repo}/compare/{basehead}', {
+                owner: this.releaseContext.owner,
+                repo: this.releaseContext.repo,
+                basehead: `${base}...${this.releaseContext.headRef}`,
+                mediaType: {
+                    format: 'diff'
+                },
+                per_page: 100,
+                page
+            });
+            const commits = response.data.commits;
+            coreExports.info(`Received ${commits.length} commits on page ${page}`);
+            // Log detailed information about the first commit to debug files array
+            if (commits.length > 0) {
+                const firstCommit = commits[0];
+                coreExports.info(`First commit on page ${page}:`);
+                coreExports.info(`- SHA: ${firstCommit.sha}`);
+                coreExports.info(`- Message: ${firstCommit.commit.message}`);
+                coreExports.info(`- Files array exists: ${!!firstCommit.files}`);
+                coreExports.info(`- Files array length: ${firstCommit.files ? firstCommit.files.length : 0}`);
+                if (firstCommit.files && firstCommit.files.length > 0) {
+                    coreExports.info(`- First file: ${firstCommit.files[0].filename}`);
+                }
+            }
+            allCommits = allCommits.concat(commits);
+            // Check if we have more pages
+            const linkHeader = response.headers.link;
+            hasMorePages = linkHeader?.includes('rel="next"') ?? false;
+            page++;
+        }
+        coreExports.info(`Total commits found: ${allCommits.length}`);
+        return allCommits;
+    }
+    /**
+     * Filter the provided commits for those that touch the given packagePath.
+     * If commits are not provided, fetches all since last release.
+     */
+    async getCommitsSinceLastRelease(packagePath, allCommits) {
+        if (!allCommits) {
+            allCommits = await this.getAllCommitsSinceLastRelease();
+        }
+        return allCommits
             .filter((commit) => {
             // Check if any files in the commit are within the package path
             coreExports.info(`Checking ${commit.files?.length ?? '(no files)'} files in commit ${commit.commit.message}`);
@@ -38827,52 +38871,52 @@ async function run() {
         // Read and parse the manifest file
         const manifestContent = fs.readFileSync(path__default.join(rootDir, manifestFile), 'utf-8');
         const manifest = JSON.parse(manifestContent);
-        const changes = [];
-        // Process each package in the manifest
+        // Get commits for each package
+        const allCommits = await github.getAllCommitsSinceLastRelease();
+        if (!allCommits || allCommits.length === 0) {
+            coreExports.info('No changes requiring version updates found');
+            return;
+        }
+        const packageChanges = [];
         for (const [packagePath, currentVersion] of Object.entries(manifest)) {
-            // Get commits for this package
-            const commitMessages = await github.getCommitsSinceLastRelease(path__default.join(rootDir, packagePath).replace(/^\.\//, ''));
-            if (commitMessages.length === 0) {
+            const commits = await github.getCommitsSinceLastRelease(packagePath, allCommits);
+            if (commits.length === 0) {
                 continue;
             }
-            // Parse conventional commits
-            const commits = commitMessages.map((message) => ({
+            const conventionalCommits = commits.map((message) => ({
                 ...parseConventionalCommit(message),
                 hash: '' // We don't need the hash for version calculation
             }));
-            // Determine version bump
-            const bump = determineVersionBump(commits);
+            const bump = determineVersionBump(conventionalCommits);
             if (bump === 'none') {
                 continue;
             }
-            // Calculate new version
             const newVersion = calculateNewVersion(currentVersion, bump, isPreRelease);
-            // Generate changelog
-            const changelog = generateChangelog(commits);
-            changes.push({
-                path: path__default.join(rootDir, packagePath).replace(/^\.\//, ''),
+            const changelog = generateChangelog(conventionalCommits);
+            packageChanges.push({
+                path: packagePath,
                 currentVersion,
                 newVersion,
-                commits,
+                commits: conventionalCommits,
                 changelog
             });
         }
-        if (changes.length === 0) {
+        if (packageChanges.length === 0) {
             coreExports.info('No changes requiring version updates found');
             return;
         }
         // Update package versions and create PR if needed
-        for (const change of changes) {
+        for (const change of packageChanges) {
             await github.updatePackageVersion(change.path, change.newVersion);
         }
         if (isPreRelease) {
-            await github.createReleasePullRequest(changes);
+            await github.createReleasePullRequest(packageChanges);
         }
         else {
-            await github.createRelease(changes);
+            await github.createRelease(packageChanges);
         }
         // Set outputs
-        coreExports.setOutput('version', changes[0].newVersion);
+        coreExports.setOutput('version', packageChanges[0].newVersion);
         coreExports.setOutput('prerelease', isPreRelease);
     }
     catch (error) {

@@ -6,6 +6,22 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as toml from '@iarna/toml'
 
+interface CommitFile {
+  filename: string
+  status: string
+  additions: number
+  deletions: number
+  changes: number
+}
+
+interface Commit {
+  sha: string
+  commit: {
+    message: string
+  }
+  files?: CommitFile[]
+}
+
 export class GitHubService {
   private octokit: Octokit
   private releaseContext: ReleaseContext
@@ -162,19 +178,19 @@ export class GitHubService {
     }
   }
 
-  async getCommitsSinceLastRelease(packagePath: string): Promise<string[]> {
+  /**
+   * Fetch all commits (with files) since the last release (or fallback) for the repo.
+   * Returns the array of commits (with files) for further filtering.
+   */
+  async getAllCommitsSinceLastRelease(): Promise<Commit[]> {
     // Get all releases for the repository
     const { data: releases } = await this.octokit.repos.listReleases({
       owner: this.releaseContext.owner,
       repo: this.releaseContext.repo
     })
 
-    // Find the last release for this package
-    const packageTagPrefix = `${packagePath}-v`
-    const lastRelease = releases.find(
-      (release) =>
-        release.tag_name.startsWith(packageTagPrefix) && !release.prerelease
-    )
+    // Find the most recent non-prerelease release (for any package)
+    const lastRelease = releases.find((release) => !release.prerelease)
 
     // If no release found, get commits since the beginning
     let base: string
@@ -183,28 +199,82 @@ export class GitHubService {
     } else {
       // Get total commit count and use that to look back
       const totalCommits = await this.getCommitCount()
-      const lookbackCount = Math.min(50, totalCommits - 1)
+      const lookbackCount = Math.min(50, totalCommits)
       base = `HEAD~${lookbackCount}`
     }
 
     core.info(
-      `Getting commits on ${this.releaseContext.owner}/${this.releaseContext.repo} since last release for "${packagePath}" with base ${base} and head ${this.releaseContext.headRef}...`
+      `Getting all commits on ${this.releaseContext.owner}/${this.releaseContext.repo} since last release with base ${base} and head ${this.releaseContext.headRef}...`
     )
 
-    const { data: commits } =
-      await this.octokit.repos.compareCommitsWithBasehead({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        basehead: `${base}...${this.releaseContext.headRef}`
-      })
+    let allCommits: Commit[] = []
+    let page = 1
+    let hasMorePages = true
 
-    return commits.commits
+    while (hasMorePages) {
+      core.info(`Fetching page ${page} of commits...`)
+      const response = await this.octokit.request(
+        'GET /repos/{owner}/{repo}/compare/{basehead}',
+        {
+          owner: this.releaseContext.owner,
+          repo: this.releaseContext.repo,
+          basehead: `${base}...${this.releaseContext.headRef}`,
+          mediaType: {
+            format: 'diff'
+          },
+          per_page: 100,
+          page
+        }
+      )
+
+      const commits = response.data.commits
+      core.info(`Received ${commits.length} commits on page ${page}`)
+
+      // Log detailed information about the first commit to debug files array
+      if (commits.length > 0) {
+        const firstCommit = commits[0]
+        core.info(`First commit on page ${page}:`)
+        core.info(`- SHA: ${firstCommit.sha}`)
+        core.info(`- Message: ${firstCommit.commit.message}`)
+        core.info(`- Files array exists: ${!!firstCommit.files}`)
+        core.info(
+          `- Files array length: ${firstCommit.files ? firstCommit.files.length : 0}`
+        )
+        if (firstCommit.files && firstCommit.files.length > 0) {
+          core.info(`- First file: ${firstCommit.files[0].filename}`)
+        }
+      }
+
+      allCommits = allCommits.concat(commits)
+
+      // Check if we have more pages
+      const linkHeader = response.headers.link
+      hasMorePages = linkHeader?.includes('rel="next"') ?? false
+      page++
+    }
+
+    core.info(`Total commits found: ${allCommits.length}`)
+    return allCommits
+  }
+
+  /**
+   * Filter the provided commits for those that touch the given packagePath.
+   * If commits are not provided, fetches all since last release.
+   */
+  async getCommitsSinceLastRelease(
+    packagePath: string,
+    allCommits?: Commit[]
+  ): Promise<string[]> {
+    if (!allCommits) {
+      allCommits = await this.getAllCommitsSinceLastRelease()
+    }
+    return allCommits
       .filter((commit) => {
         // Check if any files in the commit are within the package path
         core.info(
           `Checking ${commit.files?.length ?? '(no files)'} files in commit ${commit.commit.message}`
         )
-        return commit.files?.some((file) => {
+        return commit.files?.some((file: CommitFile) => {
           core.info(
             `Checking commit ${commit.sha} for ${packagePath} in ${file.filename}`
           )
