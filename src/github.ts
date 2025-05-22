@@ -291,13 +291,30 @@ export class GitHubService {
       const branchName = `release-main`
 
       // Create the branch from main
-      await this.octokit.git.createRef({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        ref: `refs/heads/${branchName}`,
-        sha: await this.getMainSha(),
-        force: true // Force update to replace existing commits
-      })
+      try {
+        await this.octokit.git.createRef({
+          owner: this.releaseContext.owner,
+          repo: this.releaseContext.repo,
+          ref: `refs/heads/${branchName}`,
+          sha: await this.getMainSha()
+        })
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message.includes('Reference already exists')
+        ) {
+          core.info('Branch already exists, forcing update')
+          await this.octokit.git.updateRef({
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo,
+            ref: `refs/heads/${branchName}`,
+            sha: await this.getMainSha(),
+            force: true // Force update to replace existing commits
+          })
+        } else {
+          throw error
+        }
+      }
 
       // Update package versions and changelogs locally
       const treeItems = []

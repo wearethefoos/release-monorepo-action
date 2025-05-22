@@ -753,8 +753,7 @@ describe('GitHubService', () => {
         owner: 'test-owner',
         repo: 'test-repo',
         ref: expect.stringMatching(/^refs\/heads\/release-main$/),
-        sha: 'main-sha',
-        force: true
+        sha: 'main-sha'
       })
       expect(mockOctokit.git.createBlob).toHaveBeenCalledTimes(3) // Once for package.json, once for changelog, once for manifest
       expect(mockOctokit.git.createTree).toHaveBeenCalledWith({
