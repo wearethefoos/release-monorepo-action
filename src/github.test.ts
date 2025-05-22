@@ -628,7 +628,7 @@ describe('GitHubService', () => {
   })
 
   describe('createReleasePullRequest', () => {
-    it('should create a release PR', async () => {
+    it('should create a release PR with release-me tag', async () => {
       const mockPR = {
         data: { number: 123, html_url: 'https://github.com/test/pull/1' }
       }
@@ -652,7 +652,7 @@ describe('GitHubService', () => {
         }
       ]
 
-      await githubService.createReleasePullRequest(changes)
+      await githubService.createReleasePullRequest(changes, 'release-me')
       expect(mockOctokit.pulls.update).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
@@ -690,6 +690,26 @@ describe('GitHubService', () => {
       await expect(
         githubService.createReleasePullRequest(changes)
       ).rejects.toThrow('API Error')
+    })
+  })
+
+  describe('addLabel', () => {
+    it('should add a label to the PR', async () => {
+      mockOctokit.issues.addLabels.mockResolvedValue({})
+      await githubService.addLabel('released')
+      expect(mockOctokit.issues.addLabels).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        issue_number: 123,
+        labels: ['released']
+      })
+    })
+
+    it('should handle API errors', async () => {
+      mockOctokit.issues.addLabels.mockRejectedValue(new Error('API Error'))
+      await expect(githubService.addLabel('released')).rejects.toThrow(
+        'API Error'
+      )
     })
   })
 

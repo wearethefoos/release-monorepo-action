@@ -38690,7 +38690,7 @@ class GitHubService {
         });
         return pr.labels.map((label) => label.name);
     }
-    async createReleasePullRequest(changes) {
+    async createReleasePullRequest(changes, label = 'release-me') {
         if (!this.releaseContext.isPullRequest ||
             !this.releaseContext.pullRequestNumber) {
             return;
@@ -38708,7 +38708,19 @@ class GitHubService {
             owner: this.releaseContext.owner,
             repo: this.releaseContext.repo,
             issue_number: this.releaseContext.pullRequestNumber,
-            labels: ['release-me']
+            labels: [label]
+        });
+    }
+    async addLabel(label) {
+        if (!this.releaseContext.isPullRequest ||
+            !this.releaseContext.pullRequestNumber) {
+            return;
+        }
+        await this.octokit.issues.addLabels({
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo,
+            issue_number: this.releaseContext.pullRequestNumber,
+            labels: [label]
         });
     }
     generatePullRequestBody(changes) {
@@ -38901,8 +38913,8 @@ async function run() {
         const github = new GitHubService(token);
         const labels = await github.getPullRequestLabels();
         // Check if this is a release PR
-        if (labels.includes('release-me')) {
-            coreExports.info('This is a release PR, skipping version calculation');
+        if (labels.includes('released')) {
+            coreExports.info('This PR has already been released, skipping');
             return;
         }
         // Check if this is a prerelease PR
@@ -38917,7 +38929,7 @@ async function run() {
         // Get commits for each package
         const allCommits = await github.getAllCommitsSinceLastRelease(true);
         if (!allCommits || allCommits.length === 0) {
-            coreExports.info('No new commits found');
+            coreExports.info('No changes requiring version updates found');
             return;
         }
         const packageChanges = [];
@@ -38949,19 +38961,24 @@ async function run() {
             coreExports.info('No changes requiring version updates found');
             return;
         }
-        // Update package versions and create PR if needed
-        for (const change of packageChanges) {
-            await github.updatePackageVersion(change.path, change.newVersion);
-        }
-        if (isPreRelease) {
-            await github.createReleasePullRequest(packageChanges);
+        // If this is a PR with release-me tag, create the release
+        if (labels.includes('release-me')) {
+            // Update package versions
+            for (const change of packageChanges) {
+                await github.updatePackageVersion(change.path, change.newVersion);
+            }
+            // Create the release
+            await github.createRelease(packageChanges);
+            // Add released tag to the PR
+            await github.addLabel('released');
+            // Set outputs
+            coreExports.setOutput('version', packageChanges[0].newVersion);
+            coreExports.setOutput('prerelease', isPreRelease);
         }
         else {
-            await github.createRelease(packageChanges);
+            // This is a push to main, create a PR with the changes
+            await github.createReleasePullRequest(packageChanges, 'release-me');
         }
-        // Set outputs
-        coreExports.setOutput('version', packageChanges[0].newVersion);
-        coreExports.setOutput('prerelease', isPreRelease);
     }
     catch (error) {
         if (error instanceof Error) {

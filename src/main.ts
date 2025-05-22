@@ -27,8 +27,8 @@ export async function run(): Promise<void> {
     const labels = await github.getPullRequestLabels()
 
     // Check if this is a release PR
-    if (labels.includes('release-me')) {
-      core.info('This is a release PR, skipping version calculation')
+    if (labels.includes('released')) {
+      core.info('This PR has already been released, skipping')
       return
     }
 
@@ -51,7 +51,7 @@ export async function run(): Promise<void> {
     // Get commits for each package
     const allCommits = await github.getAllCommitsSinceLastRelease(true)
     if (!allCommits || allCommits.length === 0) {
-      core.info('No new commits found')
+      core.info('No changes requiring version updates found')
       return
     }
 
@@ -91,20 +91,26 @@ export async function run(): Promise<void> {
       return
     }
 
-    // Update package versions and create PR if needed
-    for (const change of packageChanges) {
-      await github.updatePackageVersion(change.path, change.newVersion)
-    }
+    // If this is a PR with release-me tag, create the release
+    if (labels.includes('release-me')) {
+      // Update package versions
+      for (const change of packageChanges) {
+        await github.updatePackageVersion(change.path, change.newVersion)
+      }
 
-    if (isPreRelease) {
-      await github.createReleasePullRequest(packageChanges)
-    } else {
+      // Create the release
       await github.createRelease(packageChanges)
-    }
 
-    // Set outputs
-    core.setOutput('version', packageChanges[0].newVersion)
-    core.setOutput('prerelease', isPreRelease)
+      // Add released tag to the PR
+      await github.addLabel('released')
+
+      // Set outputs
+      core.setOutput('version', packageChanges[0].newVersion)
+      core.setOutput('prerelease', isPreRelease)
+    } else {
+      // This is a push to main, create a PR with the changes
+      await github.createReleasePullRequest(packageChanges, 'release-me')
+    }
   } catch (error) {
     if (error instanceof Error) {
       core.setFailed(error.message)
