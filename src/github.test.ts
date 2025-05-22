@@ -668,7 +668,7 @@ describe('GitHubService', () => {
         owner: 'test-owner',
         repo: 'test-repo',
         pull_number: 123,
-        title: 'Release packages/core@1.1.0',
+        title: 'chore: release packages/core@1.1.0',
         body: expect.stringContaining('## Changes')
       })
       expect(mockOctokit.issues.addLabels).toHaveBeenCalledWith({
@@ -721,7 +721,7 @@ describe('GitHubService', () => {
       vi.mocked(fs.readFileSync).mockImplementation((p) => {
         if (p === packageJsonPath)
           return JSON.stringify({ name: 'core', version: '1.0.0' })
-        if (p === changelogPath) return '## 1.0.0\n\n- Initial release\n' // No level 1 heading
+        if (p === changelogPath) return '## 1.0.0\n\n- Initial release\n'
         return ''
       })
 
@@ -780,7 +780,7 @@ describe('GitHubService', () => {
       expect(mockOctokit.git.createCommit).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
-        message: 'chore: update versions to 1.1.0',
+        message: 'chore: release packages/core@1.1.0',
         tree: 'tree-sha',
         parents: ['branch-sha']
       })
@@ -795,7 +795,7 @@ describe('GitHubService', () => {
       expect(mockOctokit.pulls.create).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
-        title: 'Release packages/core@1.1.0',
+        title: 'chore: release packages/core@1.1.0',
         body: expect.stringContaining('## Changes'),
         head: expect.stringMatching(
           /^release-1\.1\.0-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/
@@ -864,11 +864,25 @@ describe('GitHubService', () => {
         data: [
           {
             number: 789,
-            title: 'Release packages/core@1.0.0',
+            title: 'chore: release packages/core@1.0.0',
             body: 'Old changelog',
-            labels: [{ name: 'release-me' }]
+            labels: [{ name: 'release-me' }],
+            head: { ref: 'release-1.0.0-2024-01-01' }
           }
         ]
+      })
+
+      // Mock fs.existsSync and fs.readFileSync for package.json and changelog
+      const packageJsonPath = 'packages/core/package.json'
+      const changelogPath = 'packages/core/CHANGELOG.md'
+      vi.mocked(fs.existsSync).mockImplementation(
+        (p) => p === packageJsonPath || p === changelogPath
+      )
+      vi.mocked(fs.readFileSync).mockImplementation((p) => {
+        if (p === packageJsonPath)
+          return JSON.stringify({ name: 'core', version: '1.0.0' })
+        if (p === changelogPath) return '## 1.0.0\n\n- Initial release\n'
+        return ''
       })
 
       const changes: PackageChanges[] = [
@@ -897,16 +911,38 @@ describe('GitHubService', () => {
         state: 'open',
         labels: ['release-me']
       })
+
+      // Verify that changes were pushed to the existing branch
+      expect(mockOctokit.git.getRef).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        ref: 'heads/release-1.0.0-2024-01-01'
+      })
+      expect(mockOctokit.git.createBlob).toHaveBeenCalledTimes(2) // Once for package.json, once for changelog
+      expect(mockOctokit.git.createTree).toHaveBeenCalled()
+      expect(mockOctokit.git.createCommit).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        message: 'chore: release packages/core@1.1.0',
+        tree: 'tree-sha',
+        parents: ['branch-sha']
+      })
+      expect(mockOctokit.git.updateRef).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        ref: 'heads/release-1.0.0-2024-01-01',
+        sha: 'commit-sha',
+        force: true // Force update to replace existing commits
+      })
+
+      // Verify PR was updated
       expect(mockOctokit.pulls.update).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
         pull_number: 789,
-        title: 'Release packages/core@1.1.0',
+        title: 'chore: release packages/core@1.1.0',
         body: expect.stringContaining('## Changes')
       })
-      // Should not create a new branch or PR
-      expect(mockOctokit.git.createRef).not.toHaveBeenCalled()
-      expect(mockOctokit.pulls.create).not.toHaveBeenCalled()
     })
 
     it('should create a new PR when no existing release PR is found', async () => {

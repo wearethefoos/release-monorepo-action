@@ -108,7 +108,19 @@ export class GitHubService {
     changes: PackageChanges[],
     label: string = 'release-me'
   ): Promise<void> {
-    const title = `Release ${changes.map((change) => `${change.path}@${change.newVersion}`).join(', ')}`
+    // Determine PR title and commit message
+    let title: string
+    if (changes.length === 1) {
+      const change = changes[0]
+      if (change.path === '.') {
+        title = `chore: release ${change.newVersion}`
+      } else {
+        title = `chore: release ${change.path}@${change.newVersion}`
+      }
+    } else {
+      title = 'chore: release main'
+    }
+    const commitMessage = title
     const body = this.generatePullRequestBody(changes)
 
     if (
@@ -140,8 +152,110 @@ export class GitHubService {
       })
 
       if (existingPRs.length > 0) {
+        core.info(`Updating existing release PR ${existingPRs[0].number}`)
         // Update the most recent release PR
         const existingPR = existingPRs[0]
+
+        // Get the branch name from the PR
+        const branchName = existingPR.head.ref
+
+        // Update package versions and changelogs locally
+        const treeItems = []
+        for (const change of changes) {
+          await this.updatePackageVersion(change.path, change.newVersion)
+
+          // Add the updated package.json to the tree
+          const packageJsonPath = path.join(change.path, 'package.json')
+          if (fs.existsSync(packageJsonPath)) {
+            const content = fs.readFileSync(packageJsonPath, 'utf-8')
+            const { data: blob } = await this.octokit.git.createBlob({
+              owner: this.releaseContext.owner,
+              repo: this.releaseContext.repo,
+              content,
+              encoding: 'utf-8'
+            })
+            treeItems.push({
+              path: packageJsonPath,
+              mode: '100644' as const,
+              type: 'blob' as const,
+              sha: blob.sha
+            })
+          }
+
+          // Add/update the changelog
+          const changelogPath = path.join(change.path, 'CHANGELOG.md')
+          let changelogContent = ''
+          if (fs.existsSync(changelogPath)) {
+            changelogContent = fs.readFileSync(changelogPath, 'utf-8')
+          }
+
+          // Ensure the changelog starts with a level 1 heading
+          const packageName =
+            change.path === '.' ? 'Changelog' : `${change.path} Changelog`
+          if (!changelogContent.startsWith('# ')) {
+            changelogContent = `# ${packageName}\n\n${changelogContent}`
+          }
+
+          // Add the new version section after the level 1 heading
+          const newVersionSection = `## ${change.newVersion} (${new Date().toISOString().split('T')[0]})\n\n${change.changelog}\n\n`
+          const lines = changelogContent.split('\n')
+          const headingIndex = lines.findIndex((line) => line.startsWith('# '))
+          if (headingIndex !== -1) {
+            lines.splice(headingIndex + 2, 0, newVersionSection)
+            changelogContent = lines.join('\n')
+          } else {
+            changelogContent = newVersionSection + changelogContent
+          }
+
+          // Create blob for the changelog
+          const { data: changelogBlob } = await this.octokit.git.createBlob({
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo,
+            content: changelogContent,
+            encoding: 'utf-8'
+          })
+          treeItems.push({
+            path: changelogPath,
+            mode: '100644' as const,
+            type: 'blob' as const,
+            sha: changelogBlob.sha
+          })
+        }
+
+        // Get the current commit SHA of the branch
+        const { data: ref } = await this.octokit.git.getRef({
+          owner: this.releaseContext.owner,
+          repo: this.releaseContext.repo,
+          ref: `heads/${branchName}`
+        })
+
+        // Create a tree with the updated files
+        const { data: tree } = await this.octokit.git.createTree({
+          owner: this.releaseContext.owner,
+          repo: this.releaseContext.repo,
+          base_tree: ref.object.sha,
+          tree: treeItems
+        })
+
+        // Create a commit with the tree
+        const { data: commit } = await this.octokit.git.createCommit({
+          owner: this.releaseContext.owner,
+          repo: this.releaseContext.repo,
+          message: commitMessage,
+          tree: tree.sha,
+          parents: [ref.object.sha]
+        })
+
+        // Update the branch reference to point to the new commit
+        await this.octokit.git.updateRef({
+          owner: this.releaseContext.owner,
+          repo: this.releaseContext.repo,
+          ref: `heads/${branchName}`,
+          sha: commit.sha,
+          force: true // Force update to replace existing commits
+        })
+
+        // Update the PR
         await this.octokit.pulls.update({
           owner: this.releaseContext.owner,
           repo: this.releaseContext.repo,
@@ -246,7 +360,7 @@ export class GitHubService {
       const { data: commit } = await this.octokit.git.createCommit({
         owner: this.releaseContext.owner,
         repo: this.releaseContext.repo,
-        message: `chore: update versions to ${versionTag}`,
+        message: commitMessage,
         tree: tree.sha,
         parents: [
           (
