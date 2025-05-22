@@ -872,6 +872,11 @@ describe('GitHubService', () => {
         ]
       })
 
+      // Mock getting main branch SHA
+      mockOctokit.repos.getBranch.mockResolvedValue({
+        data: { commit: { sha: 'main-sha' } }
+      })
+
       // Mock fs.existsSync and fs.readFileSync for package.json and changelog
       const packageJsonPath = 'packages/core/package.json'
       const changelogPath = 'packages/core/CHANGELOG.md'
@@ -912,20 +917,27 @@ describe('GitHubService', () => {
         labels: ['release-me']
       })
 
-      // Verify that changes were pushed to the existing branch
-      expect(mockOctokit.git.getRef).toHaveBeenCalledWith({
+      // Verify that we get the main branch SHA
+      expect(mockOctokit.repos.getBranch).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
-        ref: 'heads/release-1.0.0-2024-01-01'
+        branch: 'main'
       })
+
+      // Verify that changes were pushed to the existing branch
       expect(mockOctokit.git.createBlob).toHaveBeenCalledTimes(2) // Once for package.json, once for changelog
-      expect(mockOctokit.git.createTree).toHaveBeenCalled()
+      expect(mockOctokit.git.createTree).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        base_tree: 'main-sha',
+        tree: expect.any(Array)
+      })
       expect(mockOctokit.git.createCommit).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
         message: 'chore: release packages/core@1.1.0',
         tree: 'tree-sha',
-        parents: ['branch-sha']
+        parents: ['main-sha']
       })
       expect(mockOctokit.git.updateRef).toHaveBeenCalledWith({
         owner: 'test-owner',

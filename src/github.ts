@@ -159,6 +159,9 @@ export class GitHubService {
         // Get the branch name from the PR
         const branchName = existingPR.head.ref
 
+        // Get the main branch SHA to base our new commit on
+        const mainSha = await this.getMainSha()
+
         // Update package versions and changelogs locally
         const treeItems = []
         for (const change of changes) {
@@ -222,31 +225,24 @@ export class GitHubService {
           })
         }
 
-        // Get the current commit SHA of the branch
-        const { data: ref } = await this.octokit.git.getRef({
-          owner: this.releaseContext.owner,
-          repo: this.releaseContext.repo,
-          ref: `heads/${branchName}`
-        })
-
         // Create a tree with the updated files
         const { data: tree } = await this.octokit.git.createTree({
           owner: this.releaseContext.owner,
           repo: this.releaseContext.repo,
-          base_tree: ref.object.sha,
+          base_tree: mainSha,
           tree: treeItems
         })
 
-        // Create a commit with the tree
+        // Create a commit with the tree, based on main
         const { data: commit } = await this.octokit.git.createCommit({
           owner: this.releaseContext.owner,
           repo: this.releaseContext.repo,
           message: commitMessage,
           tree: tree.sha,
-          parents: [ref.object.sha]
+          parents: [mainSha]
         })
 
-        // Update the branch reference to point to the new commit
+        // Update the branch reference to point to the new commit, replacing all history
         await this.octokit.git.updateRef({
           owner: this.releaseContext.owner,
           repo: this.releaseContext.repo,
