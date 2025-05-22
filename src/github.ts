@@ -295,7 +295,8 @@ export class GitHubService {
         owner: this.releaseContext.owner,
         repo: this.releaseContext.repo,
         ref: `refs/heads/${branchName}`,
-        sha: await this.getMainSha()
+        sha: await this.getMainSha(),
+        force: true // Force update to replace existing commits
       })
 
       // Update package versions and changelogs locally
