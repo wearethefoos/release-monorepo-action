@@ -9,7 +9,7 @@
 
 ### 🐛 Fixes
 
-- off by one error
+- off-by-one error
 - address various issues with versioning and commits
 - create proper release PRs
 - changelog formatting
