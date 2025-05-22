@@ -161,6 +161,7 @@ export function generateChangelog(commits: ConventionalCommit[]): string {
     .filter(([, items]) => items.length > 0)
     .map(([title, items]) => `### ${title}\n\n${items.join('\n')}`)
     .join('\n\n')
+    .replace(/\n\n\n/g, '\n\n')
 
   return changelog
 }

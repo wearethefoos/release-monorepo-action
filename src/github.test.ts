@@ -752,9 +752,7 @@ describe('GitHubService', () => {
       expect(mockOctokit.git.createRef).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
-        ref: expect.stringMatching(
-          /^refs\/heads\/release-1\.1\.0-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/
-        ),
+        ref: expect.stringMatching(/^refs\/heads\/release-main$/),
         sha: 'main-sha'
       })
       expect(mockOctokit.git.createBlob).toHaveBeenCalledTimes(2) // Once for package.json, once for changelog
@@ -787,9 +785,7 @@ describe('GitHubService', () => {
       expect(mockOctokit.git.updateRef).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
-        ref: expect.stringMatching(
-          /^heads\/release-1\.1\.0-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/
-        ),
+        ref: expect.stringMatching(/^heads\/release-main$/),
         sha: 'commit-sha'
       })
       expect(mockOctokit.pulls.create).toHaveBeenCalledWith({
@@ -797,9 +793,7 @@ describe('GitHubService', () => {
         repo: 'test-repo',
         title: 'chore: release packages/core@1.1.0',
         body: expect.stringContaining('## Changes'),
-        head: expect.stringMatching(
-          /^release-1\.1\.0-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/
-        ),
+        head: expect.stringMatching(/^release-main$/),
         base: 'main'
       })
       expect(mockOctokit.issues.addLabels).toHaveBeenCalledWith({
@@ -1033,6 +1027,170 @@ describe('GitHubService', () => {
       // Should create a new branch and PR
       expect(mockOctokit.git.createRef).toHaveBeenCalled()
       expect(mockOctokit.pulls.create).toHaveBeenCalled()
+    })
+
+    it('should create a PR with correct body format for root package', async () => {
+      // Mock GitHub context to simulate a push to main
+      vi.mocked(context).payload.pull_request = undefined
+      githubService = new GitHubService('test-token')
+
+      // Mock finding no existing release PRs
+      mockOctokit.pulls.list.mockResolvedValue({
+        data: []
+      })
+
+      const mockPR = {
+        data: { number: 456, html_url: 'https://github.com/test/pull/2' }
+      }
+      mockOctokit.repos.getBranch.mockResolvedValue({
+        data: { commit: { sha: 'main-sha' } }
+      })
+      mockOctokit.git.createRef.mockResolvedValue({})
+      mockOctokit.git.getRef.mockResolvedValue({
+        data: { object: { sha: 'branch-sha' } }
+      })
+      mockOctokit.git.createBlob.mockResolvedValue({
+        data: { sha: 'blob-sha' }
+      })
+      mockOctokit.git.createTree.mockResolvedValue({
+        data: { sha: 'tree-sha' }
+      })
+      mockOctokit.git.createCommit.mockResolvedValue({
+        data: { sha: 'commit-sha' }
+      })
+      mockOctokit.git.updateRef.mockResolvedValue({})
+      mockOctokit.pulls.create.mockResolvedValue(mockPR)
+      mockOctokit.issues.addLabels.mockResolvedValue({})
+
+      // Mock fs.existsSync and fs.readFileSync for package.json and changelog
+      const packageJsonPath = 'package.json'
+      const changelogPath = 'CHANGELOG.md'
+      vi.mocked(fs.existsSync).mockImplementation(
+        (p) => p === packageJsonPath || p === changelogPath
+      )
+      vi.mocked(fs.readFileSync).mockImplementation((p) => {
+        if (p === packageJsonPath)
+          return JSON.stringify({ name: 'root', version: '1.0.0' })
+        if (p === changelogPath) return '## 1.0.0\n\n- Initial release\n'
+        return ''
+      })
+
+      const changes: PackageChanges[] = [
+        {
+          path: '.',
+          currentVersion: '1.0.0',
+          newVersion: '1.1.0',
+          commits: [
+            {
+              type: 'feat',
+              scope: 'root',
+              breaking: false,
+              message: 'feat: add feature',
+              hash: 'abc123'
+            }
+          ],
+          changelog: '## Changes\n\n- feat: add feature'
+        }
+      ]
+
+      // Mock Date.now() to return a fixed timestamp
+      const mockDate = new Date('2024-01-01T12:00:00.000Z')
+      vi.spyOn(global, 'Date').mockImplementation(
+        () => mockDate as unknown as string
+      )
+
+      await githubService.createReleasePullRequest(changes, 'release-me')
+
+      expect(mockOctokit.pulls.create).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        title: 'chore: release 1.1.0',
+        body: '## Changelog (1.0.0 -> 1.1.0)\n\n## Changes\n\n- feat: add feature',
+        head: 'release-main',
+        base: 'main'
+      })
+    })
+
+    it('should create a PR with correct body format for subpackage', async () => {
+      // Mock GitHub context to simulate a push to main
+      vi.mocked(context).payload.pull_request = undefined
+      githubService = new GitHubService('test-token')
+
+      // Mock finding no existing release PRs
+      mockOctokit.pulls.list.mockResolvedValue({
+        data: []
+      })
+
+      const mockPR = {
+        data: { number: 456, html_url: 'https://github.com/test/pull/2' }
+      }
+      mockOctokit.repos.getBranch.mockResolvedValue({
+        data: { commit: { sha: 'main-sha' } }
+      })
+      mockOctokit.git.createRef.mockResolvedValue({})
+      mockOctokit.git.getRef.mockResolvedValue({
+        data: { object: { sha: 'branch-sha' } }
+      })
+      mockOctokit.git.createBlob.mockResolvedValue({
+        data: { sha: 'blob-sha' }
+      })
+      mockOctokit.git.createTree.mockResolvedValue({
+        data: { sha: 'tree-sha' }
+      })
+      mockOctokit.git.createCommit.mockResolvedValue({
+        data: { sha: 'commit-sha' }
+      })
+      mockOctokit.git.updateRef.mockResolvedValue({})
+      mockOctokit.pulls.create.mockResolvedValue(mockPR)
+      mockOctokit.issues.addLabels.mockResolvedValue({})
+
+      // Mock fs.existsSync and fs.readFileSync for package.json and changelog
+      const packageJsonPath = 'packages/core/package.json'
+      const changelogPath = 'packages/core/CHANGELOG.md'
+      vi.mocked(fs.existsSync).mockImplementation(
+        (p) => p === packageJsonPath || p === changelogPath
+      )
+      vi.mocked(fs.readFileSync).mockImplementation((p) => {
+        if (p === packageJsonPath)
+          return JSON.stringify({ name: 'core', version: '1.0.0' })
+        if (p === changelogPath) return '## 1.0.0\n\n- Initial release\n'
+        return ''
+      })
+
+      const changes: PackageChanges[] = [
+        {
+          path: 'packages/core',
+          currentVersion: '1.0.0',
+          newVersion: '1.1.0',
+          commits: [
+            {
+              type: 'feat',
+              scope: 'core',
+              breaking: false,
+              message: 'feat(core): add feature',
+              hash: 'abc123'
+            }
+          ],
+          changelog: '## Changes\n\n- feat(core): add feature'
+        }
+      ]
+
+      // Mock Date.now() to return a fixed timestamp
+      const mockDate = new Date('2024-01-01T12:00:00.000Z')
+      vi.spyOn(global, 'Date').mockImplementation(
+        () => mockDate as unknown as string
+      )
+
+      await githubService.createReleasePullRequest(changes, 'release-me')
+
+      expect(mockOctokit.pulls.create).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        title: 'chore: release packages/core@1.1.0',
+        body: '## packages/core Changelog (1.0.0 -> 1.1.0)\n\n## Changes\n\n- feat(core): add feature',
+        head: 'release-main',
+        base: 'main'
+      })
     })
   })
 

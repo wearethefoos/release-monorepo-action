@@ -214,7 +214,7 @@ export class GitHubService {
           const { data: changelogBlob } = await this.octokit.git.createBlob({
             owner: this.releaseContext.owner,
             repo: this.releaseContext.repo,
-            content: changelogContent,
+            content: changelogContent.trimEnd() + '\n',
             encoding: 'utf-8'
           })
           treeItems.push({
@@ -262,10 +262,8 @@ export class GitHubService {
         return
       }
 
-      // Create a new branch with the format 'release-<versionTag>-<timestamp>'
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-      const versionTag = changes.map((change) => change.newVersion).join('-')
-      const branchName = `release-${versionTag}-${timestamp}`
+      // Create a new branch with the format 'release-main'
+      const branchName = `release-main`
 
       // Create the branch from main
       await this.octokit.git.createRef({
@@ -313,7 +311,7 @@ export class GitHubService {
         }
 
         // Add the new version section after the level 1 heading
-        const newVersionSection = `## ${change.newVersion} (${new Date().toISOString().split('T')[0]})\n\n${change.changelog}\n\n`
+        const newVersionSection = `## ${change.newVersion} (${new Date().toISOString().split('T')[0]})\n\n${change.changelog}`
         const lines = changelogContent.split('\n')
         const headingIndex = lines.findIndex((line) => line.startsWith('# '))
         if (headingIndex !== -1) {
@@ -327,7 +325,7 @@ export class GitHubService {
         const { data: changelogBlob } = await this.octokit.git.createBlob({
           owner: this.releaseContext.owner,
           repo: this.releaseContext.repo,
-          content: changelogContent,
+          content: changelogContent.trimEnd() + '\n',
           encoding: 'utf-8'
         })
         treeItems.push({
