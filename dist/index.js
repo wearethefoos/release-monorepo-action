@@ -35922,7 +35922,7 @@ class GitHubService {
             // Get total commit count and use that to look back
             const totalCommits = await this.getCommitCount();
             const lookbackCount = Math.min(50, totalCommits);
-            base = `HEAD~${lookbackCount}`;
+            base = `HEAD~${lookbackCount - 1}`;
         }
         coreExports.info(`Getting all commits on ${this.releaseContext.owner}/${this.releaseContext.repo} since last release with base ${base} and head ${this.releaseContext.headRef}...`);
         let allCommits = [];
@@ -35950,6 +35950,7 @@ class GitHubService {
                 coreExports.info(`- Message: ${firstCommit.commit.message}`);
                 coreExports.info(`- Files array exists: ${!!firstCommit.files}`);
                 coreExports.info(`- Files array length: ${firstCommit.files ? firstCommit.files.length : 0}`);
+                // Note: this could bite us if we have a commit with more than 300 files.
                 if (firstCommit.files && firstCommit.files.length > 0) {
                     coreExports.info(`- First file: ${firstCommit.files[0].filename}`);
                 }
