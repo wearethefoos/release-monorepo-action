@@ -104,7 +104,10 @@ export class GitHubService {
     return pr.labels.map((label) => label.name)
   }
 
-  async createReleasePullRequest(changes: PackageChanges[]): Promise<void> {
+  async createReleasePullRequest(
+    changes: PackageChanges[],
+    label: string = 'release-me'
+  ): Promise<void> {
     if (
       !this.releaseContext.isPullRequest ||
       !this.releaseContext.pullRequestNumber
@@ -127,7 +130,23 @@ export class GitHubService {
       owner: this.releaseContext.owner,
       repo: this.releaseContext.repo,
       issue_number: this.releaseContext.pullRequestNumber,
-      labels: ['release-me']
+      labels: [label]
+    })
+  }
+
+  async addLabel(label: string): Promise<void> {
+    if (
+      !this.releaseContext.isPullRequest ||
+      !this.releaseContext.pullRequestNumber
+    ) {
+      return
+    }
+
+    await this.octokit.issues.addLabels({
+      owner: this.releaseContext.owner,
+      repo: this.releaseContext.repo,
+      issue_number: this.releaseContext.pullRequestNumber,
+      labels: [label]
     })
   }
 

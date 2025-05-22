@@ -1,9 +1,16 @@
-import { describe, it, expect, beforeAll, beforeEach, vi, Mock } from 'vitest'
-import * as core from '../__fixtures__/core.js'
+import { describe, it, expect, beforeEach, vi, beforeAll } from 'vitest'
+import * as core from '@actions/core'
 import * as fs from 'fs'
+import type { Mock } from 'vitest'
 
-// Mock dependencies
-vi.mock('@actions/core', () => core)
+vi.mock('@actions/core', () => ({
+  info: vi.fn(),
+  debug: vi.fn(),
+  setOutput: vi.fn(),
+  setFailed: vi.fn(),
+  getInput: vi.fn()
+}))
+
 vi.mock('fs', () => ({
   readFileSync: vi.fn()
 }))
@@ -15,7 +22,8 @@ const githubServiceMock = {
   getCommitsSinceLastRelease: vi.fn(),
   updatePackageVersion: vi.fn(),
   createRelease: vi.fn(),
-  createReleasePullRequest: vi.fn()
+  createReleasePullRequest: vi.fn(),
+  addLabel: vi.fn()
 }
 vi.mock('./github.js', () => ({
   GitHubService: vi.fn(() => githubServiceMock)
@@ -35,7 +43,7 @@ describe('main.ts', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     // Mock core.getInput
-    core.getInput.mockImplementation((name: string) => {
+    ;(core.getInput as Mock).mockImplementation((name: string) => {
       switch (name) {
         case 'token':
           return 'test-token'
@@ -61,7 +69,9 @@ describe('main.ts', () => {
     githubServiceMock.getPullRequestLabels.mockResolvedValue([])
     githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue([])
     await run()
-    expect(core.info).toHaveBeenCalledWith('No new commits found')
+    expect(core.info).toHaveBeenCalledWith(
+      'No changes requiring version updates found'
+    )
   })
 
   it('should handle prerelease PRs correctly', async () => {
@@ -72,21 +82,16 @@ describe('main.ts', () => {
     )
     githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue(mockCommits)
     githubServiceMock.createReleasePullRequest.mockResolvedValue(undefined)
-    githubServiceMock.updatePackageVersion.mockResolvedValue(undefined)
-    githubServiceMock.createRelease.mockResolvedValue(undefined)
-    core.getInput.mockImplementation((name: string) => {
+    ;(core.getInput as Mock).mockImplementation((name: string) => {
       if (name === 'create-prerelease') return 'true'
       if (name === 'prerelease-label') return 'Prerelease'
       return ''
     })
     await run()
-    console.log('Changes:', mockCommits)
-    console.log(
-      'createReleasePullRequest result:',
-      await githubServiceMock.createReleasePullRequest()
+    expect(githubServiceMock.createReleasePullRequest).toHaveBeenCalledWith(
+      expect.any(Array),
+      'release-me'
     )
-    expect(core.setOutput).toHaveBeenCalledWith('version', expect.any(String))
-    expect(core.setOutput).toHaveBeenCalledWith('prerelease', true)
   })
 
   it('should handle regular releases correctly', async () => {
@@ -96,12 +101,12 @@ describe('main.ts', () => {
       mockCommits
     )
     githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue(mockCommits)
-    githubServiceMock.createRelease.mockResolvedValue(undefined)
-    githubServiceMock.updatePackageVersion.mockResolvedValue(undefined)
     githubServiceMock.createReleasePullRequest.mockResolvedValue(undefined)
     await run()
-    expect(core.setOutput).toHaveBeenCalledWith('version', expect.any(String))
-    expect(core.setOutput).toHaveBeenCalledWith('prerelease', false)
+    expect(githubServiceMock.createReleasePullRequest).toHaveBeenCalledWith(
+      expect.any(Array),
+      'release-me'
+    )
   })
 
   it('should handle errors gracefully', async () => {
@@ -117,8 +122,8 @@ describe('main.ts', () => {
     expect(core.setFailed).toHaveBeenCalledWith('API Error')
   })
 
-  it('should skip if PR is labeled with release-me', async () => {
-    githubServiceMock.getPullRequestLabels.mockResolvedValue(['release-me'])
+  it('should skip if PR is labeled with released', async () => {
+    githubServiceMock.getPullRequestLabels.mockResolvedValue(['released'])
     githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue([])
     githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue([])
     githubServiceMock.updatePackageVersion.mockResolvedValue(undefined)
@@ -126,13 +131,46 @@ describe('main.ts', () => {
     githubServiceMock.createReleasePullRequest.mockResolvedValue(undefined)
     await run()
     expect(core.info).toHaveBeenCalledWith(
-      'This is a release PR, skipping version calculation'
+      'This PR has already been released, skipping'
+    )
+  })
+
+  it('should create release when PR has release-me tag', async () => {
+    const mockCommits = ['feat(core): add new feature']
+    githubServiceMock.getPullRequestLabels.mockResolvedValue(['release-me'])
+    githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue(
+      mockCommits
+    )
+    githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue(mockCommits)
+    githubServiceMock.updatePackageVersion.mockResolvedValue(undefined)
+    githubServiceMock.createRelease.mockResolvedValue(undefined)
+    githubServiceMock.addLabel.mockResolvedValue(undefined)
+    await run()
+    expect(githubServiceMock.updatePackageVersion).toHaveBeenCalled()
+    expect(githubServiceMock.createRelease).toHaveBeenCalled()
+    expect(githubServiceMock.addLabel).toHaveBeenCalledWith('released')
+    expect(core.setOutput).toHaveBeenCalledWith('version', expect.any(String))
+    expect(core.setOutput).toHaveBeenCalledWith('prerelease', false)
+  })
+
+  it('should create PR with release-me tag when pushing to main', async () => {
+    const mockCommits = ['feat(core): add new feature']
+    githubServiceMock.getPullRequestLabels.mockResolvedValue([])
+    githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue(
+      mockCommits
+    )
+    githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue(mockCommits)
+    githubServiceMock.createReleasePullRequest.mockResolvedValue(undefined)
+    await run()
+    expect(githubServiceMock.createReleasePullRequest).toHaveBeenCalledWith(
+      expect.any(Array),
+      'release-me'
     )
   })
 
   it('should skip if prereleases are disabled and PR is labeled as prerelease', async () => {
     githubServiceMock.getPullRequestLabels.mockResolvedValue(['Prerelease'])
-    core.getInput.mockImplementation((name: string) => {
+    ;(core.getInput as Mock).mockImplementation((name: string) => {
       if (name === 'create-prerelease') return 'false'
       if (name === 'prerelease-label') return 'Prerelease'
       return ''
@@ -148,7 +186,9 @@ describe('main.ts', () => {
     githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue([])
     githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue([])
     await run()
-    expect(core.info).toHaveBeenCalledWith('No new commits found')
+    expect(core.info).toHaveBeenCalledWith(
+      'No changes requiring version updates found'
+    )
   })
 
   it('should handle unknown errors', async () => {
@@ -161,7 +201,7 @@ describe('main.ts', () => {
     githubServiceMock.getPullRequestLabels.mockResolvedValue([])
     githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue([])
     githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue([])
-    core.getInput.mockImplementation((name: string) => {
+    ;(core.getInput as Mock).mockImplementation((name: string) => {
       if (name === 'manifest-file') return '.release-manifest.json'
       return ''
     })
@@ -172,6 +212,8 @@ describe('main.ts', () => {
       })
     )
     await run()
-    expect(core.info).toHaveBeenCalledWith('No new commits found')
+    expect(core.info).toHaveBeenCalledWith(
+      'No changes requiring version updates found'
+    )
   })
 })
