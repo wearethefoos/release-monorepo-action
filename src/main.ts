@@ -108,6 +108,7 @@ export async function run(): Promise<void> {
       core.setOutput('version', packageChanges[0].newVersion)
       core.setOutput('prerelease', isPreRelease)
     } else {
+      core.info('This is a push to main, creating a release PR')
       // This is a push to main, create a PR with the changes
       await github.createReleasePullRequest(packageChanges, 'release-me')
     }

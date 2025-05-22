@@ -108,30 +108,131 @@ export class GitHubService {
     changes: PackageChanges[],
     label: string = 'release-me'
   ): Promise<void> {
-    if (
-      !this.releaseContext.isPullRequest ||
-      !this.releaseContext.pullRequestNumber
-    ) {
-      return
-    }
-
     const title = `Release ${changes.map((change) => `${change.path}@${change.newVersion}`).join(', ')}`
     const body = this.generatePullRequestBody(changes)
 
-    await this.octokit.pulls.update({
-      owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo,
-      pull_number: this.releaseContext.pullRequestNumber,
-      title,
-      body
-    })
+    if (
+      this.releaseContext.isPullRequest &&
+      this.releaseContext.pullRequestNumber
+    ) {
+      // Update existing PR
+      await this.octokit.pulls.update({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        pull_number: this.releaseContext.pullRequestNumber,
+        title,
+        body
+      })
 
-    await this.octokit.issues.addLabels({
+      await this.octokit.issues.addLabels({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        issue_number: this.releaseContext.pullRequestNumber,
+        labels: [label]
+      })
+    } else {
+      // Create a new branch with the format 'release-<versionTag>-<timestamp>'
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      const versionTag = changes.map((change) => change.newVersion).join('-')
+      const branchName = `release-${versionTag}-${timestamp}`
+
+      // Create the branch from main
+      await this.octokit.git.createRef({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        ref: `refs/heads/${branchName}`,
+        sha: await this.getMainSha()
+      })
+
+      // Update package versions and changelogs locally
+      const treeItems = []
+      for (const change of changes) {
+        await this.updatePackageVersion(change.path, change.newVersion)
+
+        // Add the updated files to the tree
+        const packageJsonPath = path.join(change.path, 'package.json')
+        if (fs.existsSync(packageJsonPath)) {
+          const content = fs.readFileSync(packageJsonPath, 'utf-8')
+          const { data: blob } = await this.octokit.git.createBlob({
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo,
+            content,
+            encoding: 'utf-8'
+          })
+          treeItems.push({
+            path: packageJsonPath,
+            mode: '100644' as const,
+            type: 'blob' as const,
+            sha: blob.sha
+          })
+        }
+      }
+
+      // Create a tree with the updated files
+      const { data: tree } = await this.octokit.git.createTree({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        base_tree: (
+          await this.octokit.git.getRef({
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo,
+            ref: `heads/${branchName}`
+          })
+        ).data.object.sha,
+        tree: treeItems
+      })
+
+      // Create a commit with the tree
+      const { data: commit } = await this.octokit.git.createCommit({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        message: `chore: update versions to ${versionTag}`,
+        tree: tree.sha,
+        parents: [
+          (
+            await this.octokit.git.getRef({
+              owner: this.releaseContext.owner,
+              repo: this.releaseContext.repo,
+              ref: `heads/${branchName}`
+            })
+          ).data.object.sha
+        ]
+      })
+
+      // Update the branch reference to point to the new commit
+      await this.octokit.git.updateRef({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        ref: `heads/${branchName}`,
+        sha: commit.sha
+      })
+
+      // Create the PR from the new branch
+      const { data: pr } = await this.octokit.pulls.create({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        title,
+        body,
+        head: branchName,
+        base: 'main'
+      })
+
+      await this.octokit.issues.addLabels({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        issue_number: pr.number,
+        labels: [label]
+      })
+    }
+  }
+
+  private async getMainSha(): Promise<string> {
+    const { data } = await this.octokit.repos.getBranch({
       owner: this.releaseContext.owner,
       repo: this.releaseContext.repo,
-      issue_number: this.releaseContext.pullRequestNumber,
-      labels: [label]
+      branch: 'main'
     })
+    return data.commit.sha
   }
 
   async addLabel(label: string): Promise<void> {
