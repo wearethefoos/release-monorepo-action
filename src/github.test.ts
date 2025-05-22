@@ -7,6 +7,7 @@ import * as path from 'path'
 // Mock @actions/core
 vi.mock('@actions/core', () => ({
   info: vi.fn(),
+  debug: vi.fn(),
   setOutput: vi.fn(),
   setFailed: vi.fn()
 }))
