@@ -36,7 +36,8 @@ const mockOctokit = {
   pulls: {
     update: vi.fn(),
     get: vi.fn(),
-    create: vi.fn()
+    create: vi.fn(),
+    list: vi.fn()
   },
   issues: {
     addLabels: vi.fn()
@@ -682,6 +683,12 @@ describe('GitHubService', () => {
       // Mock GitHub context to simulate a push to main
       vi.mocked(context).payload.pull_request = undefined
       githubService = new GitHubService('test-token')
+
+      // Mock finding no existing release PRs
+      mockOctokit.pulls.list.mockResolvedValue({
+        data: []
+      })
+
       const mockPR = {
         data: { number: 456, html_url: 'https://github.com/test/pull/2' }
       }
@@ -704,14 +711,20 @@ describe('GitHubService', () => {
       mockOctokit.git.updateRef.mockResolvedValue({})
       mockOctokit.pulls.create.mockResolvedValue(mockPR)
       mockOctokit.issues.addLabels.mockResolvedValue({})
-      // Mock fs.existsSync and fs.readFileSync for package.json
+
+      // Mock fs.existsSync and fs.readFileSync for package.json and changelog
       const packageJsonPath = 'packages/core/package.json'
-      vi.mocked(fs.existsSync).mockImplementation((p) => p === packageJsonPath)
+      const changelogPath = 'packages/core/CHANGELOG.md'
+      vi.mocked(fs.existsSync).mockImplementation(
+        (p) => p === packageJsonPath || p === changelogPath
+      )
       vi.mocked(fs.readFileSync).mockImplementation((p) => {
         if (p === packageJsonPath)
           return JSON.stringify({ name: 'core', version: '1.0.0' })
+        if (p === changelogPath) return '## 1.0.0\n\n- Initial release\n' // No level 1 heading
         return ''
       })
+
       const changes: PackageChanges[] = [
         {
           path: 'packages/core',
@@ -744,12 +757,7 @@ describe('GitHubService', () => {
         ),
         sha: 'main-sha'
       })
-      expect(mockOctokit.git.createBlob).toHaveBeenCalledWith({
-        owner: 'test-owner',
-        repo: 'test-repo',
-        content: expect.any(String),
-        encoding: 'utf-8'
-      })
+      expect(mockOctokit.git.createBlob).toHaveBeenCalledTimes(2) // Once for package.json, once for changelog
       expect(mockOctokit.git.createTree).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
@@ -760,13 +768,19 @@ describe('GitHubService', () => {
             mode: '100644',
             type: 'blob',
             sha: 'blob-sha'
+          },
+          {
+            path: changelogPath,
+            mode: '100644',
+            type: 'blob',
+            sha: 'blob-sha'
           }
         ]
       })
       expect(mockOctokit.git.createCommit).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
-        message: expect.stringContaining('chore: update versions'),
+        message: 'chore: update versions to 1.1.0',
         tree: 'tree-sha',
         parents: ['branch-sha']
       })
@@ -794,12 +808,30 @@ describe('GitHubService', () => {
         issue_number: 456,
         labels: ['release-me']
       })
+
+      // Verify the changelog blob was created with the correct heading
+      expect(mockOctokit.git.createBlob).toHaveBeenCalledTimes(2)
+      const changelogBlobCall = mockOctokit.git.createBlob.mock.calls.find(
+        (call) => call[0].content.includes('packages/core Changelog')
+      )
+      expect(changelogBlobCall).toBeDefined()
+      expect(changelogBlobCall![0].content).toMatch(
+        /^# packages\/core Changelog\n\n## 1\.1\.0/
+      )
     })
 
     it('should handle API errors', async () => {
+      // Mock GitHub context to simulate a push to main
       vi.mocked(context).payload.pull_request = undefined
       githubService = new GitHubService('test-token')
+
+      // Mock finding no existing release PRs
+      mockOctokit.pulls.list.mockResolvedValue({
+        data: []
+      })
+
       mockOctokit.repos.getBranch.mockRejectedValue(new Error('API Error'))
+
       const changes: PackageChanges[] = [
         {
           path: 'packages/core',
@@ -820,6 +852,139 @@ describe('GitHubService', () => {
       await expect(
         githubService.createReleasePullRequest(changes)
       ).rejects.toThrow('API Error')
+    })
+
+    it('should update an existing release PR when found', async () => {
+      // Mock GitHub context to simulate a push to main
+      vi.mocked(context).payload.pull_request = undefined
+      githubService = new GitHubService('test-token')
+
+      // Mock finding an existing release PR
+      mockOctokit.pulls.list.mockResolvedValue({
+        data: [
+          {
+            number: 789,
+            title: 'Release packages/core@1.0.0',
+            body: 'Old changelog',
+            labels: [{ name: 'release-me' }]
+          }
+        ]
+      })
+
+      const changes: PackageChanges[] = [
+        {
+          path: 'packages/core',
+          currentVersion: '1.0.0',
+          newVersion: '1.1.0',
+          commits: [
+            {
+              type: 'feat',
+              scope: 'core',
+              breaking: false,
+              message: 'feat(core): add feature',
+              hash: 'abc123'
+            }
+          ],
+          changelog: '## Changes\n\n- feat(core): add feature'
+        }
+      ]
+
+      await githubService.createReleasePullRequest(changes, 'release-me')
+
+      expect(mockOctokit.pulls.list).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        state: 'open',
+        labels: ['release-me']
+      })
+      expect(mockOctokit.pulls.update).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        pull_number: 789,
+        title: 'Release packages/core@1.1.0',
+        body: expect.stringContaining('## Changes')
+      })
+      // Should not create a new branch or PR
+      expect(mockOctokit.git.createRef).not.toHaveBeenCalled()
+      expect(mockOctokit.pulls.create).not.toHaveBeenCalled()
+    })
+
+    it('should create a new PR when no existing release PR is found', async () => {
+      // Mock GitHub context to simulate a push to main
+      vi.mocked(context).payload.pull_request = undefined
+      githubService = new GitHubService('test-token')
+
+      // Mock finding no existing release PRs
+      mockOctokit.pulls.list.mockResolvedValue({
+        data: []
+      })
+
+      const mockPR = {
+        data: { number: 456, html_url: 'https://github.com/test/pull/2' }
+      }
+      mockOctokit.repos.getBranch.mockResolvedValue({
+        data: { commit: { sha: 'main-sha' } }
+      })
+      mockOctokit.git.createRef.mockResolvedValue({})
+      mockOctokit.git.getRef.mockResolvedValue({
+        data: { object: { sha: 'branch-sha' } }
+      })
+      mockOctokit.git.createBlob.mockResolvedValue({
+        data: { sha: 'blob-sha' }
+      })
+      mockOctokit.git.createTree.mockResolvedValue({
+        data: { sha: 'tree-sha' }
+      })
+      mockOctokit.git.createCommit.mockResolvedValue({
+        data: { sha: 'commit-sha' }
+      })
+      mockOctokit.git.updateRef.mockResolvedValue({})
+      mockOctokit.pulls.create.mockResolvedValue(mockPR)
+      mockOctokit.issues.addLabels.mockResolvedValue({})
+
+      // Mock fs.existsSync and fs.readFileSync for package.json and changelog
+      const packageJsonPath = 'packages/core/package.json'
+      const changelogPath = 'packages/core/CHANGELOG.md'
+      vi.mocked(fs.existsSync).mockImplementation(
+        (p) => p === packageJsonPath || p === changelogPath
+      )
+      vi.mocked(fs.readFileSync).mockImplementation((p) => {
+        if (p === packageJsonPath)
+          return JSON.stringify({ name: 'core', version: '1.0.0' })
+        if (p === changelogPath)
+          return '# Changelog\n\n## 1.0.0\n\n- Initial release\n'
+        return ''
+      })
+
+      const changes: PackageChanges[] = [
+        {
+          path: 'packages/core',
+          currentVersion: '1.0.0',
+          newVersion: '1.1.0',
+          commits: [
+            {
+              type: 'feat',
+              scope: 'core',
+              breaking: false,
+              message: 'feat(core): add feature',
+              hash: 'abc123'
+            }
+          ],
+          changelog: '## Changes\n\n- feat(core): add feature'
+        }
+      ]
+
+      await githubService.createReleasePullRequest(changes, 'release-me')
+
+      expect(mockOctokit.pulls.list).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        state: 'open',
+        labels: ['release-me']
+      })
+      // Should create a new branch and PR
+      expect(mockOctokit.git.createRef).toHaveBeenCalled()
+      expect(mockOctokit.pulls.create).toHaveBeenCalled()
     })
   })
 

@@ -131,6 +131,27 @@ export class GitHubService {
         labels: [label]
       })
     } else {
+      // Check for existing release PRs
+      const { data: existingPRs } = await this.octokit.pulls.list({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        state: 'open',
+        labels: [label]
+      })
+
+      if (existingPRs.length > 0) {
+        // Update the most recent release PR
+        const existingPR = existingPRs[0]
+        await this.octokit.pulls.update({
+          owner: this.releaseContext.owner,
+          repo: this.releaseContext.repo,
+          pull_number: existingPR.number,
+          title,
+          body
+        })
+        return
+      }
+
       // Create a new branch with the format 'release-<versionTag>-<timestamp>'
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
       const versionTag = changes.map((change) => change.newVersion).join('-')
@@ -149,7 +170,7 @@ export class GitHubService {
       for (const change of changes) {
         await this.updatePackageVersion(change.path, change.newVersion)
 
-        // Add the updated files to the tree
+        // Add the updated package.json to the tree
         const packageJsonPath = path.join(change.path, 'package.json')
         if (fs.existsSync(packageJsonPath)) {
           const content = fs.readFileSync(packageJsonPath, 'utf-8')
@@ -166,6 +187,45 @@ export class GitHubService {
             sha: blob.sha
           })
         }
+
+        // Add/update the changelog
+        const changelogPath = path.join(change.path, 'CHANGELOG.md')
+        let changelogContent = ''
+        if (fs.existsSync(changelogPath)) {
+          changelogContent = fs.readFileSync(changelogPath, 'utf-8')
+        }
+
+        // Ensure the changelog starts with a level 1 heading
+        const packageName =
+          change.path === '.' ? 'Changelog' : `${change.path} Changelog`
+        if (!changelogContent.startsWith('# ')) {
+          changelogContent = `# ${packageName}\n\n${changelogContent}`
+        }
+
+        // Add the new version section after the level 1 heading
+        const newVersionSection = `## ${change.newVersion} (${new Date().toISOString().split('T')[0]})\n\n${change.changelog}\n\n`
+        const lines = changelogContent.split('\n')
+        const headingIndex = lines.findIndex((line) => line.startsWith('# '))
+        if (headingIndex !== -1) {
+          lines.splice(headingIndex + 2, 0, newVersionSection)
+          changelogContent = lines.join('\n')
+        } else {
+          changelogContent = newVersionSection + changelogContent
+        }
+
+        // Create blob for the changelog
+        const { data: changelogBlob } = await this.octokit.git.createBlob({
+          owner: this.releaseContext.owner,
+          repo: this.releaseContext.repo,
+          content: changelogContent,
+          encoding: 'utf-8'
+        })
+        treeItems.push({
+          path: changelogPath,
+          mode: '100644' as const,
+          type: 'blob' as const,
+          sha: changelogBlob.sha
+        })
       }
 
       // Create a tree with the updated files
