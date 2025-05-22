@@ -1,0 +1,46 @@
+name: Act Release
+on:
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  act-release:
+    name: Act Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # - name: Setup pnpm
+      #   id: setup-pnpm
+      #   uses: pnpm/action-setup@v4
+      #   with:
+      #     version: 10
+
+      # - name: Setup Node.js
+      #   id: setup-node
+      #   uses: actions/setup-node@v4
+      #   with:
+      #     node-version: 18.20.8
+      #     cache: pnpm
+
+      # - name: Install Dependencies
+      #   id: pnpm-install
+      #   run: pnpm install
+
+      # - name: Package
+      #   id: package
+      #   run: pnpm run package
+
+      - name: Release
+        id: release
+        uses: ./
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Print Versions
+        id: print-versions
+        run: |
+          echo "version: ${{ steps.release.outputs.version }}"

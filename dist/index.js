@@ -1,34 +1,54 @@
-import require$$0 from 'os';
-import require$$0$1 from 'crypto';
-import * as fs from 'fs';
-import fs__default from 'fs';
-import * as path from 'path';
-import path__default from 'path';
-import require$$2$1 from 'http';
-import require$$3$1 from 'https';
-import require$$0$4 from 'net';
-import require$$1 from 'tls';
-import require$$4$1 from 'events';
-import require$$0$3 from 'assert';
-import require$$0$2 from 'util';
-import require$$0$5 from 'stream';
-import require$$7 from 'buffer';
-import require$$8 from 'querystring';
-import require$$14 from 'stream/web';
-import require$$0$7 from 'node:stream';
-import require$$1$1 from 'node:util';
-import require$$0$6 from 'node:events';
-import require$$0$8 from 'worker_threads';
-import require$$2$2 from 'perf_hooks';
-import require$$5 from 'util/types';
-import require$$4$2 from 'async_hooks';
-import require$$1$2 from 'console';
-import require$$1$3 from 'url';
-import require$$3$2 from 'zlib';
-import require$$6 from 'string_decoder';
-import require$$0$9 from 'diagnostics_channel';
-import require$$2$3 from 'child_process';
-import require$$6$1 from 'timers';
+'use strict';
+
+var require$$0 = require('os');
+var require$$0$1 = require('crypto');
+var fs = require('fs');
+var path = require('path');
+var require$$2$1 = require('http');
+var require$$3$1 = require('https');
+var require$$0$4 = require('net');
+var require$$1 = require('tls');
+var require$$4$1 = require('events');
+var require$$0$3 = require('assert');
+var require$$0$2 = require('util');
+var require$$0$5 = require('stream');
+var require$$7 = require('buffer');
+var require$$8 = require('querystring');
+var require$$14 = require('stream/web');
+var require$$0$7 = require('node:stream');
+var require$$1$1 = require('node:util');
+var require$$0$6 = require('node:events');
+var require$$0$8 = require('worker_threads');
+var require$$2$2 = require('perf_hooks');
+var require$$5 = require('util/types');
+var require$$4$2 = require('async_hooks');
+var require$$1$2 = require('console');
+var require$$1$3 = require('url');
+var require$$3$2 = require('zlib');
+var require$$6 = require('string_decoder');
+var require$$0$9 = require('diagnostics_channel');
+var require$$2$3 = require('child_process');
+var require$$6$1 = require('timers');
+
+function _interopNamespaceDefault(e) {
+	var n = Object.create(null);
+	if (e) {
+		Object.keys(e).forEach(function (k) {
+			if (k !== 'default') {
+				var d = Object.getOwnPropertyDescriptor(e, k);
+				Object.defineProperty(n, k, d.get ? d : {
+					enumerable: true,
+					get: function () { return e[k]; }
+				});
+			}
+		});
+	}
+	n.default = e;
+	return Object.freeze(n);
+}
+
+var fs__namespace = /*#__PURE__*/_interopNamespaceDefault(fs);
+var path__namespace = /*#__PURE__*/_interopNamespaceDefault(path);
 
 var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
 
@@ -253,7 +273,7 @@ function requireFileCommand () {
 	// We use any as a valid input type
 	/* eslint-disable @typescript-eslint/no-explicit-any */
 	const crypto = __importStar(require$$0$1);
-	const fs = __importStar(fs__default);
+	const fs$1 = __importStar(fs);
 	const os = __importStar(require$$0);
 	const utils_1 = requireUtils$3();
 	function issueFileCommand(command, message) {
@@ -261,10 +281,10 @@ function requireFileCommand () {
 	    if (!filePath) {
 	        throw new Error(`Unable to find environment variable for file command ${command}`);
 	    }
-	    if (!fs.existsSync(filePath)) {
+	    if (!fs$1.existsSync(filePath)) {
 	        throw new Error(`Missing file at path: ${filePath}`);
 	    }
-	    fs.appendFileSync(filePath, `${(0, utils_1.toCommandValue)(message)}${os.EOL}`, {
+	    fs$1.appendFileSync(filePath, `${(0, utils_1.toCommandValue)(message)}${os.EOL}`, {
 	        encoding: 'utf8'
 	    });
 	}
@@ -25231,7 +25251,7 @@ function requireSummary () {
 		Object.defineProperty(exports, "__esModule", { value: true });
 		exports.summary = exports.markdownSummary = exports.SUMMARY_DOCS_URL = exports.SUMMARY_ENV_VAR = void 0;
 		const os_1 = require$$0;
-		const fs_1 = fs__default;
+		const fs_1 = fs;
 		const { access, appendFile, writeFile } = fs_1.promises;
 		exports.SUMMARY_ENV_VAR = 'GITHUB_STEP_SUMMARY';
 		exports.SUMMARY_DOCS_URL = 'https://docs.github.com/actions/using-workflows/workflow-commands-for-github-actions#adding-a-job-summary';
@@ -25537,7 +25557,7 @@ function requirePathUtils () {
 	};
 	Object.defineProperty(pathUtils, "__esModule", { value: true });
 	pathUtils.toPlatformPath = pathUtils.toWin32Path = pathUtils.toPosixPath = void 0;
-	const path = __importStar(path__default);
+	const path$1 = __importStar(path);
 	/**
 	 * toPosixPath converts the given path to the posix form. On Windows, \\ will be
 	 * replaced with /.
@@ -25569,7 +25589,7 @@ function requirePathUtils () {
 	 * @return string The platform-specific path.
 	 */
 	function toPlatformPath(pth) {
-	    return pth.replace(/[/\\]/g, path.sep);
+	    return pth.replace(/[/\\]/g, path$1.sep);
 	}
 	pathUtils.toPlatformPath = toPlatformPath;
 	
@@ -25623,16 +25643,16 @@ function requireIoUtil () {
 		var _a;
 		Object.defineProperty(exports, "__esModule", { value: true });
 		exports.getCmdPath = exports.tryGetExecutablePath = exports.isRooted = exports.isDirectory = exports.exists = exports.READONLY = exports.UV_FS_O_EXLOCK = exports.IS_WINDOWS = exports.unlink = exports.symlink = exports.stat = exports.rmdir = exports.rm = exports.rename = exports.readlink = exports.readdir = exports.open = exports.mkdir = exports.lstat = exports.copyFile = exports.chmod = void 0;
-		const fs = __importStar(fs__default);
-		const path = __importStar(path__default);
-		_a = fs.promises
+		const fs$1 = __importStar(fs);
+		const path$1 = __importStar(path);
+		_a = fs$1.promises
 		// export const {open} = 'fs'
 		, exports.chmod = _a.chmod, exports.copyFile = _a.copyFile, exports.lstat = _a.lstat, exports.mkdir = _a.mkdir, exports.open = _a.open, exports.readdir = _a.readdir, exports.readlink = _a.readlink, exports.rename = _a.rename, exports.rm = _a.rm, exports.rmdir = _a.rmdir, exports.stat = _a.stat, exports.symlink = _a.symlink, exports.unlink = _a.unlink;
 		// export const {open} = 'fs'
 		exports.IS_WINDOWS = process.platform === 'win32';
 		// See https://github.com/nodejs/node/blob/d0153aee367422d0858105abec186da4dff0a0c5/deps/uv/include/uv/win.h#L691
 		exports.UV_FS_O_EXLOCK = 0x10000000;
-		exports.READONLY = fs.constants.O_RDONLY;
+		exports.READONLY = fs$1.constants.O_RDONLY;
 		function exists(fsPath) {
 		    return __awaiter(this, void 0, void 0, function* () {
 		        try {
@@ -25693,7 +25713,7 @@ function requireIoUtil () {
 		        if (stats && stats.isFile()) {
 		            if (exports.IS_WINDOWS) {
 		                // on Windows, test for valid extension
-		                const upperExt = path.extname(filePath).toUpperCase();
+		                const upperExt = path$1.extname(filePath).toUpperCase();
 		                if (extensions.some(validExt => validExt.toUpperCase() === upperExt)) {
 		                    return filePath;
 		                }
@@ -25722,11 +25742,11 @@ function requireIoUtil () {
 		                if (exports.IS_WINDOWS) {
 		                    // preserve the case of the actual file (since an extension was appended)
 		                    try {
-		                        const directory = path.dirname(filePath);
-		                        const upperName = path.basename(filePath).toUpperCase();
+		                        const directory = path$1.dirname(filePath);
+		                        const upperName = path$1.basename(filePath).toUpperCase();
 		                        for (const actualName of yield exports.readdir(directory)) {
 		                            if (upperName === actualName.toUpperCase()) {
-		                                filePath = path.join(directory, actualName);
+		                                filePath = path$1.join(directory, actualName);
 		                                break;
 		                            }
 		                        }
@@ -25814,7 +25834,7 @@ function requireIo () {
 	Object.defineProperty(io, "__esModule", { value: true });
 	io.findInPath = io.which = io.mkdirP = io.rmRF = io.mv = io.cp = void 0;
 	const assert_1 = require$$0$3;
-	const path = __importStar(path__default);
+	const path$1 = __importStar(path);
 	const ioUtil = __importStar(requireIoUtil());
 	/**
 	 * Copies a file or folder.
@@ -25834,7 +25854,7 @@ function requireIo () {
 	        }
 	        // If dest is an existing directory, should copy inside.
 	        const newDest = destStat && destStat.isDirectory() && copySourceDirectory
-	            ? path.join(dest, path.basename(source))
+	            ? path$1.join(dest, path$1.basename(source))
 	            : dest;
 	        if (!(yield ioUtil.exists(source))) {
 	            throw new Error(`no such file or directory: ${source}`);
@@ -25849,7 +25869,7 @@ function requireIo () {
 	            }
 	        }
 	        else {
-	            if (path.relative(source, newDest) === '') {
+	            if (path$1.relative(source, newDest) === '') {
 	                // a file cannot be copied to itself
 	                throw new Error(`'${newDest}' and '${source}' are the same file`);
 	            }
@@ -25871,7 +25891,7 @@ function requireIo () {
 	            let destExists = true;
 	            if (yield ioUtil.isDirectory(dest)) {
 	                // If dest is directory copy src into dest
-	                dest = path.join(dest, path.basename(source));
+	                dest = path$1.join(dest, path$1.basename(source));
 	                destExists = yield ioUtil.exists(dest);
 	            }
 	            if (destExists) {
@@ -25883,7 +25903,7 @@ function requireIo () {
 	                }
 	            }
 	        }
-	        yield mkdirP(path.dirname(dest));
+	        yield mkdirP(path$1.dirname(dest));
 	        yield ioUtil.rename(source, dest);
 	    });
 	}
@@ -25978,7 +25998,7 @@ function requireIo () {
 	        // build the list of extensions to try
 	        const extensions = [];
 	        if (ioUtil.IS_WINDOWS && process.env['PATHEXT']) {
-	            for (const extension of process.env['PATHEXT'].split(path.delimiter)) {
+	            for (const extension of process.env['PATHEXT'].split(path$1.delimiter)) {
 	                if (extension) {
 	                    extensions.push(extension);
 	                }
@@ -25993,7 +26013,7 @@ function requireIo () {
 	            return [];
 	        }
 	        // if any path separators, return empty
-	        if (tool.includes(path.sep)) {
+	        if (tool.includes(path$1.sep)) {
 	            return [];
 	        }
 	        // build the list of directories
@@ -26004,7 +26024,7 @@ function requireIo () {
 	        // across platforms.
 	        const directories = [];
 	        if (process.env.PATH) {
-	            for (const p of process.env.PATH.split(path.delimiter)) {
+	            for (const p of process.env.PATH.split(path$1.delimiter)) {
 	                if (p) {
 	                    directories.push(p);
 	                }
@@ -26013,7 +26033,7 @@ function requireIo () {
 	        // find all matches
 	        const matches = [];
 	        for (const directory of directories) {
-	            const filePath = yield ioUtil.tryGetExecutablePath(path.join(directory, tool), extensions);
+	            const filePath = yield ioUtil.tryGetExecutablePath(path$1.join(directory, tool), extensions);
 	            if (filePath) {
 	                matches.push(filePath);
 	            }
@@ -26122,7 +26142,7 @@ function requireToolrunner () {
 	const os = __importStar(require$$0);
 	const events = __importStar(require$$4$1);
 	const child = __importStar(require$$2$3);
-	const path = __importStar(path__default);
+	const path$1 = __importStar(path);
 	const io = __importStar(requireIo());
 	const ioUtil = __importStar(requireIoUtil());
 	const timers_1 = require$$6$1;
@@ -26477,7 +26497,7 @@ function requireToolrunner () {
 	                (this.toolPath.includes('/') ||
 	                    (IS_WINDOWS && this.toolPath.includes('\\')))) {
 	                // prefer options.cwd if it is specified, however options.cwd may also need to be rooted
-	                this.toolPath = path.resolve(process.cwd(), this.options.cwd || process.cwd(), this.toolPath);
+	                this.toolPath = path$1.resolve(process.cwd(), this.options.cwd || process.cwd(), this.toolPath);
 	            }
 	            // if the tool is only a file name, then resolve it from the PATH
 	            // otherwise verify it exists (add extension on Windows if necessary)
@@ -26966,7 +26986,7 @@ function requireCore () {
 		const file_command_1 = requireFileCommand();
 		const utils_1 = requireUtils$3();
 		const os = __importStar(require$$0);
-		const path = __importStar(path__default);
+		const path$1 = __importStar(path);
 		const oidc_utils_1 = requireOidcUtils();
 		/**
 		 * The code to exit an action
@@ -27021,7 +27041,7 @@ function requireCore () {
 		    else {
 		        (0, command_1.issueCommand)('add-path', {}, inputPath);
 		    }
-		    process.env['PATH'] = `${inputPath}${path.delimiter}${process.env['PATH']}`;
+		    process.env['PATH'] = `${inputPath}${path$1.delimiter}${process.env['PATH']}`;
 		}
 		exports.addPath = addPath;
 		/**
@@ -30814,7 +30834,7 @@ function requireContext () {
 	hasRequiredContext = 1;
 	Object.defineProperty(context, "__esModule", { value: true });
 	context.Context = void 0;
-	const fs_1 = fs__default;
+	const fs_1 = fs;
 	const os_1 = require$$0;
 	class Context {
 	    /**
@@ -35772,244 +35792,6 @@ function requireToml () {
 
 var tomlExports = requireToml();
 
-class GitHubService {
-    octokit;
-    releaseContext;
-    constructor(token) {
-        this.octokit = new Octokit({ auth: token });
-        this.releaseContext = this.getReleaseContext();
-    }
-    getReleaseContext() {
-        const { payload, ref, repo } = githubExports.context;
-        const isPullRequest = payload.pull_request !== undefined;
-        const pullRequestNumber = isPullRequest
-            ? payload.pull_request?.number
-            : undefined;
-        const baseRef = isPullRequest ? payload.pull_request?.base.ref : ref;
-        const headRef = isPullRequest ? payload.pull_request?.head.ref : ref;
-        return {
-            isPullRequest,
-            isPreRelease: false, // Will be set by the action
-            shouldRelease: false, // Will be set by the action
-            pullRequestNumber,
-            baseRef,
-            headRef,
-            owner: repo.owner,
-            repo: repo.repo
-        };
-    }
-    async getCommitCount(ref = 'HEAD') {
-        const { data: commits } = await this.octokit.repos.listCommits({
-            owner: this.releaseContext.owner,
-            repo: this.releaseContext.repo,
-            sha: ref,
-            per_page: 1
-        });
-        // Get the total count from the Link header
-        const response = await this.octokit.request('GET /repos/{owner}/{repo}/commits', {
-            owner: this.releaseContext.owner,
-            repo: this.releaseContext.repo,
-            sha: ref,
-            per_page: 1
-        });
-        // Extract the total count from the Link header
-        const linkHeader = response.headers.link;
-        if (!linkHeader) {
-            return commits.length;
-        }
-        // Parse the Link header to get the last page number
-        const lastPageMatch = linkHeader.match(/page=(\d+)>; rel="last"/);
-        if (lastPageMatch) {
-            return parseInt(lastPageMatch[1], 10);
-        }
-        return commits.length;
-    }
-    async getPullRequestLabels() {
-        if (!this.releaseContext.isPullRequest ||
-            !this.releaseContext.pullRequestNumber) {
-            return [];
-        }
-        const { data: pr } = await this.octokit.pulls.get({
-            owner: this.releaseContext.owner,
-            repo: this.releaseContext.repo,
-            pull_number: this.releaseContext.pullRequestNumber
-        });
-        return pr.labels.map((label) => label.name);
-    }
-    async createReleasePullRequest(changes) {
-        if (!this.releaseContext.isPullRequest ||
-            !this.releaseContext.pullRequestNumber) {
-            return;
-        }
-        const title = `Release ${changes.map((change) => `${change.path}@${change.newVersion}`).join(', ')}`;
-        const body = this.generatePullRequestBody(changes);
-        await this.octokit.pulls.update({
-            owner: this.releaseContext.owner,
-            repo: this.releaseContext.repo,
-            pull_number: this.releaseContext.pullRequestNumber,
-            title,
-            body
-        });
-        await this.octokit.issues.addLabels({
-            owner: this.releaseContext.owner,
-            repo: this.releaseContext.repo,
-            issue_number: this.releaseContext.pullRequestNumber,
-            labels: ['release-me']
-        });
-    }
-    generatePullRequestBody(changes) {
-        return changes
-            .map((change) => {
-            return `## ${change.path} (${change.currentVersion} -> ${change.newVersion})\n\n${change.changelog}`;
-        })
-            .join('\n\n');
-    }
-    async createRelease(changes) {
-        // Set outputs based on number of packages
-        if (changes.length === 1) {
-            const change = changes[0];
-            coreExports.setOutput('version', change.newVersion);
-            coreExports.setOutput('prerelease', change.newVersion.includes('-rc.'));
-        }
-        else {
-            const versions = changes.map((change) => ({
-                path: change.path,
-                version: change.newVersion,
-                prerelease: change.newVersion.includes('-rc.')
-            }));
-            coreExports.setOutput('versions', JSON.stringify(versions));
-        }
-        for (const change of changes) {
-            const tagName = `${change.path}-v${change.newVersion}`;
-            const releaseName = `${change.path} v${change.newVersion}`;
-            // Create tag
-            await this.octokit.git.createRef({
-                owner: this.releaseContext.owner,
-                repo: this.releaseContext.repo,
-                ref: `refs/tags/${tagName}`,
-                sha: githubExports.context.sha
-            });
-            // Create release
-            await this.octokit.repos.createRelease({
-                owner: this.releaseContext.owner,
-                repo: this.releaseContext.repo,
-                tag_name: tagName,
-                name: releaseName,
-                body: change.changelog,
-                draft: false,
-                prerelease: change.newVersion.includes('-rc.')
-            });
-        }
-    }
-    /**
-     * Fetch all commits (with files) since the last release (or fallback) for the repo.
-     * Returns the array of commits (with files) for further filtering.
-     */
-    async getAllCommitsSinceLastRelease() {
-        // Get all releases for the repository
-        const { data: releases } = await this.octokit.repos.listReleases({
-            owner: this.releaseContext.owner,
-            repo: this.releaseContext.repo
-        });
-        // Find the most recent non-prerelease release (for any package)
-        const lastRelease = releases.find((release) => !release.prerelease);
-        // If no release found, get commits since the beginning
-        let base;
-        if (lastRelease) {
-            base = lastRelease.tag_name;
-        }
-        else {
-            // Get total commit count and use that to look back
-            const totalCommits = await this.getCommitCount();
-            const lookbackCount = Math.min(50, totalCommits);
-            base = `HEAD~${lookbackCount - 1}`;
-        }
-        coreExports.info(`Getting all commits on ${this.releaseContext.owner}/${this.releaseContext.repo} since last release with base ${base} and head ${this.releaseContext.headRef}...`);
-        let allCommits = [];
-        let page = 1;
-        let hasMorePages = true;
-        while (hasMorePages) {
-            coreExports.info(`Fetching page ${page} of commits...`);
-            const response = await this.octokit.request('GET /repos/{owner}/{repo}/compare/{basehead}', {
-                owner: this.releaseContext.owner,
-                repo: this.releaseContext.repo,
-                basehead: `${base}...${this.releaseContext.headRef}`,
-                mediaType: {
-                    format: 'diff'
-                },
-                per_page: 100,
-                page
-            });
-            const commits = response.data.commits;
-            coreExports.info(`Received ${commits.length} commits on page ${page}`);
-            // Log detailed information about the first commit to debug files array
-            if (commits.length > 0) {
-                const firstCommit = commits[0];
-                coreExports.info(`First commit on page ${page}:`);
-                coreExports.info(`- SHA: ${firstCommit.sha}`);
-                coreExports.info(`- Message: ${firstCommit.commit.message}`);
-                coreExports.info(`- Files array exists: ${!!firstCommit.files}`);
-                coreExports.info(`- Files array length: ${firstCommit.files ? firstCommit.files.length : 0}`);
-                // Note: this could bite us if we have a commit with more than 300 files.
-                if (firstCommit.files && firstCommit.files.length > 0) {
-                    coreExports.info(`- First file: ${firstCommit.files[0].filename}`);
-                }
-            }
-            allCommits = allCommits.concat(commits);
-            // Check if we have more pages
-            const linkHeader = response.headers.link;
-            hasMorePages = linkHeader?.includes('rel="next"') ?? false;
-            page++;
-        }
-        coreExports.info(`Total commits found: ${allCommits.length}`);
-        return allCommits;
-    }
-    /**
-     * Filter the provided commits for those that touch the given packagePath.
-     * If commits are not provided, fetches all since last release.
-     */
-    async getCommitsSinceLastRelease(packagePath, allCommits) {
-        if (!allCommits) {
-            allCommits = await this.getAllCommitsSinceLastRelease();
-        }
-        return allCommits
-            .filter((commit) => {
-            // Check if any files in the commit are within the package path
-            coreExports.info(`Checking ${commit.files?.length ?? '(no files)'} files in commit ${commit.commit.message}`);
-            return commit.files?.some((file) => {
-                coreExports.info(`Checking commit ${commit.sha} for ${packagePath} in ${file.filename}`);
-                return file.filename.startsWith(packagePath);
-            });
-        })
-            .map((commit) => commit.commit.message);
-    }
-    async updatePackageVersion(packagePath, newVersion) {
-        const packageJsonPath = path.join(packagePath, 'package.json');
-        const cargoTomlPath = path.join(packagePath, 'Cargo.toml');
-        const versionTxtPath = path.join(packagePath, 'version.txt');
-        if (fs.existsSync(packageJsonPath)) {
-            const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-            packageJson.version = newVersion;
-            fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
-        }
-        else if (fs.existsSync(cargoTomlPath)) {
-            const cargoToml = tomlExports.parse(fs.readFileSync(cargoTomlPath, 'utf-8'));
-            if (cargoToml.package) {
-                cargoToml.package.version =
-                    newVersion;
-                fs.writeFileSync(cargoTomlPath, tomlExports.stringify(cargoToml));
-            }
-        }
-        else if (fs.existsSync(versionTxtPath)) {
-            // For version.txt, we just write the version number directly
-            fs.writeFileSync(versionTxtPath, newVersion + '\n');
-        }
-        else {
-            throw new Error(`No package.json, Cargo.toml, or version.txt found in ${packagePath}`);
-        }
-    }
-}
-
 var re = {exports: {}};
 
 var constants;
@@ -38844,6 +38626,266 @@ function generateChangelog(commits) {
     return changelog;
 }
 
+class GitHubService {
+    octokit;
+    releaseContext;
+    constructor(token) {
+        this.octokit = new Octokit({ auth: token });
+        this.releaseContext = this.getReleaseContext();
+    }
+    getReleaseContext() {
+        const { payload, ref, repo } = githubExports.context;
+        const isPullRequest = payload.pull_request !== undefined;
+        const pullRequestNumber = isPullRequest
+            ? payload.pull_request?.number
+            : undefined;
+        const baseRef = isPullRequest ? payload.pull_request?.base.ref : ref;
+        const headRef = isPullRequest ? payload.pull_request?.head.ref : ref;
+        return {
+            isPullRequest,
+            isPreRelease: false, // Will be set by the action
+            shouldRelease: false, // Will be set by the action
+            pullRequestNumber,
+            baseRef,
+            headRef,
+            owner: repo.owner,
+            repo: repo.repo
+        };
+    }
+    async getCommitCount(ref = 'HEAD') {
+        const { data: commits } = await this.octokit.repos.listCommits({
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo,
+            sha: ref,
+            per_page: 1
+        });
+        // Get the total count from the Link header
+        const response = await this.octokit.request('GET /repos/{owner}/{repo}/commits', {
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo,
+            sha: ref,
+            per_page: 1
+        });
+        // Extract the total count from the Link header
+        const linkHeader = response.headers.link;
+        if (!linkHeader) {
+            return commits.length;
+        }
+        // Parse the Link header to get the last page number
+        const lastPageMatch = linkHeader.match(/page=(\d+)>; rel="last"/);
+        if (lastPageMatch) {
+            return parseInt(lastPageMatch[1], 10);
+        }
+        return commits.length;
+    }
+    async getPullRequestLabels() {
+        if (!this.releaseContext.isPullRequest ||
+            !this.releaseContext.pullRequestNumber) {
+            return [];
+        }
+        const { data: pr } = await this.octokit.pulls.get({
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo,
+            pull_number: this.releaseContext.pullRequestNumber
+        });
+        return pr.labels.map((label) => label.name);
+    }
+    async createReleasePullRequest(changes) {
+        if (!this.releaseContext.isPullRequest ||
+            !this.releaseContext.pullRequestNumber) {
+            return;
+        }
+        const title = `Release ${changes.map((change) => `${change.path}@${change.newVersion}`).join(', ')}`;
+        const body = this.generatePullRequestBody(changes);
+        await this.octokit.pulls.update({
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo,
+            pull_number: this.releaseContext.pullRequestNumber,
+            title,
+            body
+        });
+        await this.octokit.issues.addLabels({
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo,
+            issue_number: this.releaseContext.pullRequestNumber,
+            labels: ['release-me']
+        });
+    }
+    generatePullRequestBody(changes) {
+        return changes
+            .map((change) => {
+            return `## ${change.path} (${change.currentVersion} -> ${change.newVersion})\n\n${change.changelog}`;
+        })
+            .join('\n\n');
+    }
+    async createRelease(changes) {
+        // Set outputs based on number of packages
+        if (changes.length === 1) {
+            const change = changes[0];
+            coreExports.setOutput('version', change.newVersion);
+            coreExports.setOutput('prerelease', change.newVersion.includes('-rc.'));
+        }
+        else {
+            const versions = changes.map((change) => ({
+                path: change.path,
+                version: change.newVersion,
+                prerelease: change.newVersion.includes('-rc.')
+            }));
+            coreExports.setOutput('versions', JSON.stringify(versions));
+        }
+        for (const change of changes) {
+            const versionBase = `v${change.newVersion}`;
+            const tagName = change.path === '.' ? versionBase : `${change.path}-${versionBase}`;
+            const releaseName = change.path === '.' ? versionBase : `${change.path} ${versionBase}`;
+            // Create tag
+            await this.octokit.git.createRef({
+                owner: this.releaseContext.owner,
+                repo: this.releaseContext.repo,
+                ref: `refs/tags/${tagName}`,
+                sha: githubExports.context.sha
+            });
+            // Create release
+            await this.octokit.repos.createRelease({
+                owner: this.releaseContext.owner,
+                repo: this.releaseContext.repo,
+                tag_name: tagName,
+                name: releaseName,
+                body: change.changelog,
+                draft: false,
+                prerelease: change.newVersion.includes('-rc.')
+            });
+        }
+    }
+    /**
+     * Fetch all commits (with files) since the last release (or fallback) for the repo.
+     * Returns the array of commits (with files) for further filtering.
+     */
+    async getAllCommitsSinceLastRelease(checkPaths = true) {
+        // Get all releases for the repository
+        const { data: releases } = await this.octokit.repos.listReleases({
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo
+        });
+        // Find the most recent non-prerelease release (for any package)
+        const lastRelease = releases.find((release) => !release.prerelease);
+        // If no release found, get commits since the beginning
+        let base;
+        if (lastRelease) {
+            base = lastRelease.tag_name;
+        }
+        else {
+            // Get total commit count and use that to look back
+            const totalCommits = await this.getCommitCount();
+            const lookbackCount = Math.min(50, totalCommits);
+            base = `HEAD~${lookbackCount - 1}`;
+        }
+        coreExports.info(`Getting all commits since last release with base ${base} and head ${this.releaseContext.headRef}...`);
+        let allCommits = [];
+        let page = 1;
+        let hasMorePages = true;
+        while (hasMorePages) {
+            coreExports.info(`Fetching page ${page} of commits...`);
+            const response = await this.octokit.request('GET /repos/{owner}/{repo}/compare/{basehead}', {
+                owner: this.releaseContext.owner,
+                repo: this.releaseContext.repo,
+                basehead: `${base}...${this.releaseContext.headRef}`,
+                mediaType: {
+                    format: 'json'
+                },
+                per_page: 100,
+                page
+            });
+            // If there are no commits in the response, break early
+            if (!response.data.commits || response.data.commits.length === 0) {
+                break;
+            }
+            // filter commits to only include those that would be relevant for a version bump
+            const commits = response.data.commits.filter((commit) => {
+                const conventionalCommit = parseConventionalCommit(commit.commit.message);
+                return determineVersionBump([conventionalCommit]) !== 'none';
+            });
+            coreExports.info(`Considering ${commits.length}/${response.data.commits.length} relevant commits on page ${page}`);
+            // If there are no relevant commits, break early
+            if (commits.length === 0) {
+                break;
+            }
+            // Fetch commit details for each commit to get files
+            if (checkPaths) {
+                for (const commit of commits) {
+                    const commitResponse = await this.octokit.request('GET /repos/{owner}/{repo}/commits/{ref}', {
+                        owner: this.releaseContext.owner,
+                        repo: this.releaseContext.repo,
+                        ref: commit.sha
+                        // No mediaType needed; default is JSON and includes files
+                    });
+                    commit.files = commitResponse.data.files;
+                }
+            }
+            allCommits = allCommits.concat(commits);
+            // Check if we have more pages
+            const linkHeader = response.headers.link;
+            hasMorePages = linkHeader?.includes('rel="next"') ?? false;
+            page++;
+        }
+        coreExports.info(`Total commits found: ${allCommits.length}`);
+        return allCommits;
+    }
+    /**
+     * Filter the provided commits for those that touch the given packagePath.
+     * If commits are not provided, fetches all since last release.
+     */
+    async getCommitsSinceLastRelease(packagePath, allCommits) {
+        const isSubPackage = packagePath !== '.';
+        // If allCommits is not provided, fetch them
+        if (!allCommits) {
+            allCommits = await this.getAllCommitsSinceLastRelease(isSubPackage);
+        }
+        // If there are no commits, return early
+        if (!allCommits || allCommits.length === 0) {
+            return [];
+        }
+        // For root package ('.'), return all commit messages
+        if (!isSubPackage) {
+            return allCommits.map((commit) => commit.commit.message);
+        }
+        // For subpackages, filter commits that touch files in the package path
+        const filteredCommits = allCommits.filter((commit) => {
+            // Check if any files in the commit are within the package path
+            coreExports.info(`Checking ${commit.files?.length ?? '(no files)'} files in commit ${commit.commit.message}`);
+            return commit.files?.some((file) => {
+                coreExports.info(`Checking commit ${commit.sha} for ${packagePath} in ${file.filename}`);
+                return file.filename.startsWith(packagePath);
+            });
+        });
+        return filteredCommits.map((commit) => commit.commit.message);
+    }
+    async updatePackageVersion(packagePath, newVersion) {
+        const packageJsonPath = path__namespace.join(packagePath, 'package.json');
+        const cargoTomlPath = path__namespace.join(packagePath, 'Cargo.toml');
+        const versionTxtPath = path__namespace.join(packagePath, 'version.txt');
+        if (fs__namespace.existsSync(packageJsonPath)) {
+            const packageJson = JSON.parse(fs__namespace.readFileSync(packageJsonPath, 'utf-8'));
+            packageJson.version = newVersion;
+            fs__namespace.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
+        }
+        else if (fs__namespace.existsSync(cargoTomlPath)) {
+            const cargoToml = tomlExports.parse(fs__namespace.readFileSync(cargoTomlPath, 'utf-8'));
+            if (cargoToml.package) {
+                cargoToml.package.version =
+                    newVersion;
+                fs__namespace.writeFileSync(cargoTomlPath, tomlExports.stringify(cargoToml));
+            }
+        }
+        else if (fs__namespace.existsSync(versionTxtPath)) {
+            // For version.txt, we just write the version number directly
+            fs__namespace.writeFileSync(versionTxtPath, newVersion + '\n');
+        }
+        else {
+            throw new Error(`No package.json, Cargo.toml, or version.txt found in ${packagePath}`);
+        }
+    }
+}
+
 /**
  * The main function for the action.
  *
@@ -38870,16 +38912,17 @@ async function run() {
             return;
         }
         // Read and parse the manifest file
-        const manifestContent = fs.readFileSync(path__default.join(rootDir, manifestFile), 'utf-8');
+        const manifestContent = fs__namespace.readFileSync(path.join(rootDir, manifestFile), 'utf-8');
         const manifest = JSON.parse(manifestContent);
         // Get commits for each package
-        const allCommits = await github.getAllCommitsSinceLastRelease();
+        const allCommits = await github.getAllCommitsSinceLastRelease(true);
         if (!allCommits || allCommits.length === 0) {
-            coreExports.info('No changes requiring version updates found');
+            coreExports.info('No new commits found');
             return;
         }
         const packageChanges = [];
         for (const [packagePath, currentVersion] of Object.entries(manifest)) {
+            // Pass allCommits to avoid duplicate API calls
             const commits = await github.getCommitsSinceLastRelease(packagePath, allCommits);
             if (commits.length === 0) {
                 continue;
@@ -38929,7 +38972,6 @@ async function run() {
         }
     }
 }
-run();
 
 /**
  * The entrypoint for the action. This file simply imports and runs the action's

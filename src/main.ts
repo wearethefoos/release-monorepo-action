@@ -49,13 +49,15 @@ export async function run(): Promise<void> {
     const manifest: PackageManifest = JSON.parse(manifestContent)
 
     // Get commits for each package
-    const allCommits = await github.getAllCommitsSinceLastRelease()
+    const allCommits = await github.getAllCommitsSinceLastRelease(true)
     if (!allCommits || allCommits.length === 0) {
-      core.info('No changes requiring version updates found')
+      core.info('No new commits found')
       return
     }
+
     const packageChanges: PackageChanges[] = []
     for (const [packagePath, currentVersion] of Object.entries(manifest)) {
+      // Pass allCommits to avoid duplicate API calls
       const commits = await github.getCommitsSinceLastRelease(
         packagePath,
         allCommits
@@ -111,5 +113,3 @@ export async function run(): Promise<void> {
     }
   }
 }
-
-run()
