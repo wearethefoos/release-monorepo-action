@@ -20,6 +20,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write # for adding labels to the PR
 
 jobs:
   release:

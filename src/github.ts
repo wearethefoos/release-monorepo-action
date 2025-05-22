@@ -106,7 +106,8 @@ export class GitHubService {
 
   async createReleasePullRequest(
     changes: PackageChanges[],
-    label: string = 'release-me'
+    label: string = 'release-me',
+    manifestFile: string = '.release-manifest.json'
   ): Promise<void> {
     // Determine PR title and commit message
     let title: string
@@ -225,6 +226,30 @@ export class GitHubService {
           })
         }
 
+        // Update the release manifest
+        const manifestPath = manifestFile
+        let manifestContent = '{}'
+        if (fs.existsSync(manifestPath)) {
+          manifestContent = fs.readFileSync(manifestPath, 'utf-8')
+        }
+        const manifest = JSON.parse(manifestContent)
+        for (const change of changes) {
+          manifest[change.path] = change.newVersion
+        }
+        const updatedManifestContent = JSON.stringify(manifest, null, 2) + '\n'
+        const { data: manifestBlob } = await this.octokit.git.createBlob({
+          owner: this.releaseContext.owner,
+          repo: this.releaseContext.repo,
+          content: updatedManifestContent,
+          encoding: 'utf-8'
+        })
+        treeItems.push({
+          path: manifestPath,
+          mode: '100644' as const,
+          type: 'blob' as const,
+          sha: manifestBlob.sha
+        })
+
         // Create a tree with the updated files
         const { data: tree } = await this.octokit.git.createTree({
           owner: this.releaseContext.owner,
@@ -335,6 +360,30 @@ export class GitHubService {
           sha: changelogBlob.sha
         })
       }
+
+      // Update the release manifest
+      const manifestPath = manifestFile
+      let manifestContent = '{}'
+      if (fs.existsSync(manifestPath)) {
+        manifestContent = fs.readFileSync(manifestPath, 'utf-8')
+      }
+      const manifest = JSON.parse(manifestContent)
+      for (const change of changes) {
+        manifest[change.path] = change.newVersion
+      }
+      const updatedManifestContent = JSON.stringify(manifest, null, 2) + '\n'
+      const { data: manifestBlob } = await this.octokit.git.createBlob({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        content: updatedManifestContent,
+        encoding: 'utf-8'
+      })
+      treeItems.push({
+        path: manifestPath,
+        mode: '100644' as const,
+        type: 'blob' as const,
+        sha: manifestBlob.sha
+      })
 
       // Create a tree with the updated files
       const { data: tree } = await this.octokit.git.createTree({

@@ -38691,7 +38691,7 @@ class GitHubService {
         });
         return pr.labels.map((label) => label.name);
     }
-    async createReleasePullRequest(changes, label = 'release-me') {
+    async createReleasePullRequest(changes, label = 'release-me', manifestFile = '.release-manifest.json') {
         // Determine PR title and commit message
         let title;
         if (changes.length === 1) {
@@ -38798,6 +38798,29 @@ class GitHubService {
                         sha: changelogBlob.sha
                     });
                 }
+                // Update the release manifest
+                const manifestPath = manifestFile;
+                let manifestContent = '{}';
+                if (fs__namespace.existsSync(manifestPath)) {
+                    manifestContent = fs__namespace.readFileSync(manifestPath, 'utf-8');
+                }
+                const manifest = JSON.parse(manifestContent);
+                for (const change of changes) {
+                    manifest[change.path] = change.newVersion;
+                }
+                const updatedManifestContent = JSON.stringify(manifest, null, 2) + '\n';
+                const { data: manifestBlob } = await this.octokit.git.createBlob({
+                    owner: this.releaseContext.owner,
+                    repo: this.releaseContext.repo,
+                    content: updatedManifestContent,
+                    encoding: 'utf-8'
+                });
+                treeItems.push({
+                    path: manifestPath,
+                    mode: '100644',
+                    type: 'blob',
+                    sha: manifestBlob.sha
+                });
                 // Create a tree with the updated files
                 const { data: tree } = await this.octokit.git.createTree({
                     owner: this.releaseContext.owner,
@@ -38897,6 +38920,29 @@ class GitHubService {
                     sha: changelogBlob.sha
                 });
             }
+            // Update the release manifest
+            const manifestPath = manifestFile;
+            let manifestContent = '{}';
+            if (fs__namespace.existsSync(manifestPath)) {
+                manifestContent = fs__namespace.readFileSync(manifestPath, 'utf-8');
+            }
+            const manifest = JSON.parse(manifestContent);
+            for (const change of changes) {
+                manifest[change.path] = change.newVersion;
+            }
+            const updatedManifestContent = JSON.stringify(manifest, null, 2) + '\n';
+            const { data: manifestBlob } = await this.octokit.git.createBlob({
+                owner: this.releaseContext.owner,
+                repo: this.releaseContext.repo,
+                content: updatedManifestContent,
+                encoding: 'utf-8'
+            });
+            treeItems.push({
+                path: manifestPath,
+                mode: '100644',
+                type: 'blob',
+                sha: manifestBlob.sha
+            });
             // Create a tree with the updated files
             const { data: tree } = await this.octokit.git.createTree({
                 owner: this.releaseContext.owner,
