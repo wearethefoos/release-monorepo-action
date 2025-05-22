@@ -424,7 +424,7 @@ export class GitHubService {
   private generatePullRequestBody(changes: PackageChanges[]): string {
     return changes
       .map((change) => {
-        return `## ${change.path} (${change.currentVersion} -> ${change.newVersion})\n\n${change.changelog}`
+        return `## ${change.path === '.' ? 'Changelog' : `${change.path} Changelog`} (${change.currentVersion} -> ${change.newVersion})\n\n${change.changelog}`
       })
       .join('\n\n')
   }
