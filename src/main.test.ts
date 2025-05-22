@@ -23,7 +23,9 @@ const githubServiceMock = {
   updatePackageVersion: vi.fn(),
   createRelease: vi.fn(),
   createReleasePullRequest: vi.fn(),
-  addLabel: vi.fn()
+  addLabel: vi.fn(),
+  getPullRequestFromCommit: vi.fn(),
+  wasReleasePR: vi.fn()
 }
 vi.mock('./github.js', () => ({
   GitHubService: vi.fn(() => githubServiceMock)
@@ -136,14 +138,25 @@ describe('main.ts', () => {
   })
 
   it('should create release when PR has release-me tag', async () => {
-    const mockCommits = ['feat(core): add new feature']
-    githubServiceMock.getPullRequestLabels.mockResolvedValue(['release-me'])
+    const mockCommits = [
+      {
+        commit: {
+          message: 'chore: release packages/core@1.1.0'
+        },
+        sha: 'abc123'
+      }
+    ]
+    githubServiceMock.getPullRequestLabels.mockResolvedValue([])
     githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue(
       mockCommits
     )
-    githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue(mockCommits)
+    githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue([
+      'feat(core): add new feature'
+    ])
     githubServiceMock.updatePackageVersion.mockResolvedValue(undefined)
     githubServiceMock.createRelease.mockResolvedValue(undefined)
+    githubServiceMock.getPullRequestFromCommit.mockResolvedValue(123)
+    githubServiceMock.wasReleasePR.mockResolvedValue(true)
     githubServiceMock.addLabel.mockResolvedValue(undefined)
     await run()
     expect(githubServiceMock.updatePackageVersion).toHaveBeenCalled()
@@ -156,10 +169,12 @@ describe('main.ts', () => {
   it('should create PR with release-me tag when pushing to main', async () => {
     const mockCommits = ['feat(core): add new feature']
     githubServiceMock.getPullRequestLabels.mockResolvedValue([])
-    githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue(
-      mockCommits
-    )
+    githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue([
+      { commit: { message: 'feat: new feature' } }
+    ])
     githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue(mockCommits)
+    githubServiceMock.getPullRequestFromCommit.mockResolvedValue(null)
+    githubServiceMock.wasReleasePR.mockResolvedValue(false)
     githubServiceMock.createReleasePullRequest.mockResolvedValue(undefined)
     await run()
     expect(githubServiceMock.createReleasePullRequest).toHaveBeenCalledWith(

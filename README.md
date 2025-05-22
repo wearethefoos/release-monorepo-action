@@ -24,12 +24,11 @@ accordingly.
 
 ## Outputs
 
-| Output        | Description                                                  |
-| ------------- | ------------------------------------------------------------ |
-| `version`     | The version that was released                                |
-| `prerelease`  | Whether the release was a prerelease                         |
-| `versions`    | The versions that were released (e.g. from a monorepo)       |
-| `prereleases` | Whether the releases were prereleases (e.g. from a monorepo) |
+| Output       | Description                                            |
+| ------------ | ------------------------------------------------------ |
+| `version`    | The version that was released                          |
+| `prerelease` | Whether the release was a prerelease                   |
+| `versions`   | The versions that were released (e.g. from a monorepo) |
 
 ## Manifest File Format
 

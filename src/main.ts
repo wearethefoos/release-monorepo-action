@@ -91,8 +91,22 @@ export async function run(): Promise<void> {
       return
     }
 
-    // If this is a PR with release-me tag, create the release
-    if (labels.includes('release-me')) {
+    // Check if this is a merged release PR by looking at the commit message and PR state
+    const isMergedReleasePR = await (async () => {
+      // Get the most recent commit
+      const latestCommit = allCommits[0]
+      if (!latestCommit) return false
+
+      // Check if this commit is from a merged PR
+      const prNumber = await github.getPullRequestFromCommit(latestCommit.sha)
+      if (!prNumber) return false
+
+      // Check if this was a release PR
+      return await github.wasReleasePR(prNumber)
+    })()
+
+    if (isMergedReleasePR) {
+      core.info('This is a merged release PR, creating the release')
       // Update package versions
       for (const change of packageChanges) {
         await github.updatePackageVersion(change.path, change.newVersion)
@@ -101,8 +115,14 @@ export async function run(): Promise<void> {
       // Create the release
       await github.createRelease(packageChanges)
 
-      // Add released tag to the PR
-      await github.addLabel('released')
+      // Add released label to the original PR
+      const latestCommit = allCommits[0]
+      if (latestCommit) {
+        const prNumber = await github.getPullRequestFromCommit(latestCommit.sha)
+        if (prNumber) {
+          await github.addLabel('released')
+        }
+      }
 
       // Set outputs
       core.setOutput('version', packageChanges[0].newVersion)

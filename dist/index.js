@@ -39185,6 +39185,36 @@ class GitHubService {
             throw new Error(`No package.json, Cargo.toml, or version.txt found in ${packagePath}`);
         }
     }
+    async getPullRequestFromCommit(sha) {
+        try {
+            const { data: prs } = await this.octokit.repos.listPullRequestsAssociatedWithCommit({
+                owner: this.releaseContext.owner,
+                repo: this.releaseContext.repo,
+                commit_sha: sha
+            });
+            // Find the most recently merged PR
+            const mergedPR = prs.find((pr) => pr.merged_at);
+            return mergedPR ? mergedPR.number : null;
+        }
+        catch (error) {
+            coreExports.warning(`Failed to get PR from commit ${sha}: ${error}`);
+            return null;
+        }
+    }
+    async wasReleasePR(prNumber) {
+        try {
+            const { data: pr } = await this.octokit.pulls.get({
+                owner: this.releaseContext.owner,
+                repo: this.releaseContext.repo,
+                pull_number: prNumber
+            });
+            return pr.labels.some((label) => label.name === 'release-me');
+        }
+        catch (error) {
+            coreExports.warning(`Failed to get PR ${prNumber}: ${error}`);
+            return false;
+        }
+    }
 }
 
 /**
@@ -39250,16 +39280,35 @@ async function run() {
             coreExports.info('No changes requiring version updates found');
             return;
         }
-        // If this is a PR with release-me tag, create the release
-        if (labels.includes('release-me')) {
+        // Check if this is a merged release PR by looking at the commit message and PR state
+        const isMergedReleasePR = await (async () => {
+            // Get the most recent commit
+            const latestCommit = allCommits[0];
+            if (!latestCommit)
+                return false;
+            // Check if this commit is from a merged PR
+            const prNumber = await github.getPullRequestFromCommit(latestCommit.sha);
+            if (!prNumber)
+                return false;
+            // Check if this was a release PR
+            return await github.wasReleasePR(prNumber);
+        })();
+        if (isMergedReleasePR) {
+            coreExports.info('This is a merged release PR, creating the release');
             // Update package versions
             for (const change of packageChanges) {
                 await github.updatePackageVersion(change.path, change.newVersion);
             }
             // Create the release
             await github.createRelease(packageChanges);
-            // Add released tag to the PR
-            await github.addLabel('released');
+            // Add released label to the original PR
+            const latestCommit = allCommits[0];
+            if (latestCommit) {
+                const prNumber = await github.getPullRequestFromCommit(latestCommit.sha);
+                if (prNumber) {
+                    await github.addLabel('released');
+                }
+            }
             // Set outputs
             coreExports.setOutput('version', packageChanges[0].newVersion);
             coreExports.setOutput('prerelease', isPreRelease);

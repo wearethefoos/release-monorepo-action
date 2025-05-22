@@ -694,4 +694,36 @@ export class GitHubService {
       )
     }
   }
+
+  async getPullRequestFromCommit(sha: string): Promise<number | null> {
+    try {
+      const { data: prs } =
+        await this.octokit.repos.listPullRequestsAssociatedWithCommit({
+          owner: this.releaseContext.owner,
+          repo: this.releaseContext.repo,
+          commit_sha: sha
+        })
+
+      // Find the most recently merged PR
+      const mergedPR = prs.find((pr) => pr.merged_at)
+      return mergedPR ? mergedPR.number : null
+    } catch (error) {
+      core.warning(`Failed to get PR from commit ${sha}: ${error}`)
+      return null
+    }
+  }
+
+  async wasReleasePR(prNumber: number): Promise<boolean> {
+    try {
+      const { data: pr } = await this.octokit.pulls.get({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        pull_number: prNumber
+      })
+      return pr.labels.some((label) => label.name === 'release-me')
+    } catch (error) {
+      core.warning(`Failed to get PR ${prNumber}: ${error}`)
+      return false
+    }
+  }
 }
