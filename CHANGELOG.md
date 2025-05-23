@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.1 (2025-05-23)
+
+### 🐛 Fixes
+
+- remove release-me label from released PRs
+
 ## 1.4.0 (2025-05-23)
 
 ### 🚀 Features
