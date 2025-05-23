@@ -39202,8 +39202,16 @@ class GitHubService {
                 commit_sha: sha
             });
             // Find the most recently merged PR
-            const mergedPR = prs.find((pr) => pr.merged_at);
-            return mergedPR ? mergedPR.number : null;
+            const mergedPRs = prs.filter((pr) => pr.merged_at !== null);
+            if (mergedPRs.length === 0)
+                return null;
+            // Sort by merged_at date in descending order
+            mergedPRs.sort((a, b) => {
+                const dateA = new Date(a.merged_at).getTime();
+                const dateB = new Date(b.merged_at).getTime();
+                return dateB - dateA;
+            });
+            return mergedPRs[0].number;
         }
         catch (error) {
             coreExports.warning(`Failed to get PR from commit ${sha}: ${error}`);
@@ -39505,6 +39513,5 @@ async function run() {
  * The entrypoint for the action. This file simply imports and runs the action's
  * main logic.
  */
-/* istanbul ignore next */
 run();
 //# sourceMappingURL=index.js.map

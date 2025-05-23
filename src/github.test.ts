@@ -10,7 +10,8 @@ vi.mock('@actions/core', () => ({
   info: vi.fn(),
   debug: vi.fn(),
   setOutput: vi.fn(),
-  setFailed: vi.fn()
+  setFailed: vi.fn(),
+  warning: vi.fn()
 }))
 
 // Mock Octokit
@@ -23,7 +24,9 @@ const mockOctokit = {
     listCommits: vi.fn(),
     getBranch: vi.fn(),
     createOrUpdateFileContents: vi.fn(),
-    getContent: vi.fn()
+    getContent: vi.fn(),
+    listPullRequestsAssociatedWithCommit: vi.fn(),
+    getCommit: vi.fn()
   },
   git: {
     createRef: vi.fn(),
@@ -1429,6 +1432,384 @@ describe('GitHubService', () => {
       ).rejects.toThrow(
         `No package.json, Cargo.toml, or version.txt found in ${packagePath}`
       )
+    })
+  })
+
+  describe('getPullRequestFromCommit', () => {
+    it('should return PR number from commit', async () => {
+      // Mock data with PR #456 having a later merged_at date
+      mockOctokit.repos.listPullRequestsAssociatedWithCommit.mockResolvedValue({
+        data: [
+          { number: 456, merged_at: '2024-01-02T12:00:00Z' },
+          { number: 123, merged_at: '2024-01-01T12:00:00Z' }
+        ]
+      })
+
+      const prNumber = await githubService.getPullRequestFromCommit('abc123')
+      expect(prNumber).toBe(456) // Should return the most recently merged PR
+    })
+
+    it('should return null if no merged PRs found', async () => {
+      mockOctokit.repos.listPullRequestsAssociatedWithCommit.mockResolvedValue({
+        data: [
+          { number: 123, merged_at: null },
+          { number: 456, merged_at: null }
+        ]
+      })
+
+      const prNumber = await githubService.getPullRequestFromCommit('abc123')
+      expect(prNumber).toBeNull()
+    })
+
+    it('should handle API errors', async () => {
+      mockOctokit.repos.listPullRequestsAssociatedWithCommit.mockRejectedValue(
+        new Error('API Error')
+      )
+
+      const prNumber = await githubService.getPullRequestFromCommit('abc123')
+      expect(prNumber).toBeNull()
+    })
+  })
+
+  describe('wasReleasePR', () => {
+    it('should return true if PR has release-me label', async () => {
+      mockOctokit.pulls.get.mockResolvedValue({
+        data: {
+          number: 123,
+          labels: [{ name: 'release-me' }, { name: 'other' }]
+        }
+      })
+
+      const isReleasePR = await githubService.wasReleasePR(123)
+      expect(isReleasePR).toBe(true)
+    })
+
+    it('should return false if PR does not have release-me label', async () => {
+      mockOctokit.pulls.get.mockResolvedValue({
+        data: {
+          number: 123,
+          labels: [{ name: 'other' }]
+        }
+      })
+
+      const isReleasePR = await githubService.wasReleasePR(123)
+      expect(isReleasePR).toBe(false)
+    })
+
+    it('should handle API errors', async () => {
+      mockOctokit.pulls.get.mockRejectedValue(new Error('API Error'))
+
+      const isReleasePR = await githubService.wasReleasePR(123)
+      expect(isReleasePR).toBe(false)
+    })
+  })
+
+  describe('getManifestFromMain', () => {
+    it('should return manifest content from main branch', async () => {
+      const manifest = { 'packages/core': '1.0.0' }
+      mockOctokit.repos.getContent.mockResolvedValue({
+        data: {
+          content: Buffer.from(JSON.stringify(manifest)).toString('base64')
+        }
+      })
+
+      const result = await githubService.getManifestFromMain(
+        '.release-manifest.json'
+      )
+      expect(result).toEqual(manifest)
+    })
+
+    it('should handle missing manifest file', async () => {
+      mockOctokit.repos.getContent.mockResolvedValue({
+        data: {
+          content: null
+        }
+      })
+
+      const result = await githubService.getManifestFromMain(
+        '.release-manifest.json'
+      )
+      expect(result).toEqual({})
+    })
+
+    it('should handle API errors', async () => {
+      mockOctokit.repos.getContent.mockRejectedValue(new Error('API Error'))
+
+      const result = await githubService.getManifestFromMain(
+        '.release-manifest.json'
+      )
+      expect(result).toEqual({})
+    })
+
+    it('should handle custom root directory', async () => {
+      const manifest = { 'packages/core': '1.0.0' }
+      mockOctokit.repos.getContent.mockResolvedValue({
+        data: {
+          content: Buffer.from(JSON.stringify(manifest)).toString('base64')
+        }
+      })
+
+      await githubService.getManifestFromMain(
+        '.release-manifest.json',
+        'packages/core'
+      )
+      expect(mockOctokit.repos.getContent).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        path: 'packages/core/.release-manifest.json',
+        ref: 'main'
+      })
+    })
+  })
+
+  describe('wasManifestUpdatedInLastCommit', () => {
+    it('should return true if manifest was updated', async () => {
+      mockOctokit.repos.listCommits.mockResolvedValue({
+        data: [{ sha: 'abc123' }]
+      })
+      mockOctokit.repos.getCommit.mockResolvedValue({
+        data: {
+          files: [{ filename: '.release-manifest.json' }]
+        }
+      })
+
+      const result = await githubService.wasManifestUpdatedInLastCommit(
+        '.release-manifest.json'
+      )
+      expect(result).toBe(true)
+    })
+
+    it('should return false if manifest was not updated', async () => {
+      mockOctokit.repos.listCommits.mockResolvedValue({
+        data: [{ sha: 'abc123' }]
+      })
+      mockOctokit.repos.getCommit.mockResolvedValue({
+        data: {
+          files: [{ filename: 'other.txt' }]
+        }
+      })
+
+      const result = await githubService.wasManifestUpdatedInLastCommit(
+        '.release-manifest.json'
+      )
+      expect(result).toBe(false)
+    })
+
+    it('should handle no commits', async () => {
+      mockOctokit.repos.listCommits.mockResolvedValue({
+        data: []
+      })
+
+      const result = await githubService.wasManifestUpdatedInLastCommit(
+        '.release-manifest.json'
+      )
+      expect(result).toBe(false)
+    })
+
+    it('should handle API errors', async () => {
+      mockOctokit.repos.listCommits.mockRejectedValue(new Error('API Error'))
+
+      const result = await githubService.wasManifestUpdatedInLastCommit(
+        '.release-manifest.json'
+      )
+      expect(result).toBe(false)
+    })
+
+    it('should handle custom root directory', async () => {
+      mockOctokit.repos.listCommits.mockResolvedValue({
+        data: [{ sha: 'abc123' }]
+      })
+      mockOctokit.repos.getCommit.mockResolvedValue({
+        data: {
+          files: [{ filename: 'packages/core/.release-manifest.json' }]
+        }
+      })
+
+      const result = await githubService.wasManifestUpdatedInLastCommit(
+        '.release-manifest.json',
+        'packages/core'
+      )
+      expect(result).toBe(true)
+    })
+  })
+
+  describe('getLastReleaseVersion', () => {
+    it('should return version for root package', async () => {
+      mockOctokit.repos.listReleases.mockResolvedValue({
+        data: [
+          { tag_name: 'v1.0.0', prerelease: false },
+          { tag_name: 'v0.9.0', prerelease: false }
+        ]
+      })
+
+      const version = await githubService.getLastReleaseVersion('.')
+      expect(version).toBe('1.0.0')
+    })
+
+    it('should return version for subpackage', async () => {
+      mockOctokit.repos.listReleases.mockResolvedValue({
+        data: [
+          { tag_name: 'packages/core-v1.0.0', prerelease: false },
+          { tag_name: 'packages/core-v0.9.0', prerelease: false }
+        ]
+      })
+
+      const version = await githubService.getLastReleaseVersion('packages/core')
+      expect(version).toBe('1.0.0')
+    })
+
+    it('should ignore prereleases', async () => {
+      mockOctokit.repos.listReleases.mockResolvedValue({
+        data: [
+          { tag_name: 'v1.0.0-rc.1', prerelease: true },
+          { tag_name: 'v0.9.0', prerelease: false }
+        ]
+      })
+
+      const version = await githubService.getLastReleaseVersion('.')
+      expect(version).toBe('0.9.0')
+    })
+
+    it('should return null if no releases found', async () => {
+      mockOctokit.repos.listReleases.mockResolvedValue({
+        data: []
+      })
+
+      const version = await githubService.getLastReleaseVersion('.')
+      expect(version).toBeNull()
+    })
+
+    it('should handle API errors', async () => {
+      mockOctokit.repos.listReleases.mockRejectedValue(new Error('API Error'))
+
+      const version = await githubService.getLastReleaseVersion('.')
+      expect(version).toBeNull()
+    })
+  })
+
+  describe('getChangelogForPackage', () => {
+    it('should return changelog content', async () => {
+      const changelog =
+        '## 1.0.0\n\n- Initial release\n\n## 0.9.0\n\n- Old release'
+      mockOctokit.repos.getContent.mockResolvedValue({
+        data: {
+          content: Buffer.from(changelog).toString('base64')
+        }
+      })
+
+      const result = await githubService.getChangelogForPackage('packages/core')
+      expect(result).toBe('## 1.0.0\n\n- Initial release')
+    })
+
+    it('should handle missing changelog file', async () => {
+      mockOctokit.repos.getContent.mockResolvedValue({
+        data: {
+          content: null
+        }
+      })
+
+      const result = await githubService.getChangelogForPackage('packages/core')
+      expect(result).toBe('')
+    })
+
+    it('should handle no version sections', async () => {
+      const changelog = 'No version sections here'
+      mockOctokit.repos.getContent.mockResolvedValue({
+        data: {
+          content: Buffer.from(changelog).toString('base64')
+        }
+      })
+
+      const result = await githubService.getChangelogForPackage('packages/core')
+      expect(result).toBe('')
+    })
+
+    it('should handle API errors', async () => {
+      mockOctokit.repos.getContent.mockRejectedValue(new Error('API Error'))
+
+      const result = await githubService.getChangelogForPackage('packages/core')
+      expect(result).toBe('')
+    })
+  })
+
+  describe('findReleasePRByVersions', () => {
+    it('should return PR number if title matches generated title', async () => {
+      mockOctokit.pulls.list.mockResolvedValue({
+        data: [
+          {
+            number: 42,
+            title: 'chore: release packages/core@1.2.3',
+            labels: [{ name: 'release-me' }]
+          }
+        ]
+      })
+      const manifest = { 'packages/core': '1.2.3' }
+      const prNumber = await githubService.findReleasePRByVersions(manifest)
+      expect(prNumber).toBe(42)
+    })
+
+    it('should return null if no PR matches', async () => {
+      mockOctokit.pulls.list.mockResolvedValue({
+        data: [
+          {
+            number: 42,
+            title: 'chore: release unrelated@1.2.3',
+            labels: [{ name: 'release-me' }]
+          }
+        ]
+      })
+      const manifest = { 'packages/core': '1.2.3' }
+      const prNumber = await githubService.findReleasePRByVersions(manifest)
+      expect(prNumber).toBeNull()
+    })
+  })
+
+  describe('generateReleasePRTitle', () => {
+    it('should generate correct title for single root package', () => {
+      // @ts-expect-error: access private method for test
+      const title = githubService.generateReleasePRTitle([
+        {
+          path: '.',
+          currentVersion: '1.0.0',
+          newVersion: '1.1.0',
+          commits: [],
+          changelog: ''
+        }
+      ])
+      expect(title).toBe('chore: release 1.1.0')
+    })
+    it('should generate correct title for single subpackage', () => {
+      // @ts-expect-error: access private method for test
+      const title = githubService.generateReleasePRTitle([
+        {
+          path: 'packages/core',
+          currentVersion: '1.0.0',
+          newVersion: '1.1.0',
+          commits: [],
+          changelog: ''
+        }
+      ])
+      expect(title).toBe('chore: release packages/core@1.1.0')
+    })
+    it('should generate correct title for multi-package', () => {
+      // @ts-expect-error: access private method for test
+      const title = githubService.generateReleasePRTitle([
+        {
+          path: 'packages/core',
+          currentVersion: '1.0.0',
+          newVersion: '1.1.0',
+          commits: [],
+          changelog: ''
+        },
+        {
+          path: 'packages/utils',
+          currentVersion: '2.0.0',
+          newVersion: '2.1.0',
+          commits: [],
+          changelog: ''
+        }
+      ])
+      expect(title).toBe('chore: release main')
     })
   })
 })
