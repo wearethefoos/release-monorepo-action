@@ -1339,15 +1339,8 @@ describe('GitHubService', () => {
 
   describe('addLabel', () => {
     it('should add a label to the PR', async () => {
-      // Ensure context is a PR
-      vi.mocked(context).payload.pull_request = {
-        number: 123,
-        base: { ref: 'test-base' },
-        head: { ref: 'test-head' }
-      }
-      githubService = new GitHubService('test-token')
       mockOctokit.issues.addLabels.mockResolvedValue({})
-      await githubService.addLabel('released')
+      await githubService.addLabel('released', 123)
       expect(mockOctokit.issues.addLabels).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
@@ -1357,15 +1350,8 @@ describe('GitHubService', () => {
     })
 
     it('should handle API errors', async () => {
-      // Ensure context is a PR
-      vi.mocked(context).payload.pull_request = {
-        number: 123,
-        base: { ref: 'test-base' },
-        head: { ref: 'test-head' }
-      }
-      githubService = new GitHubService('test-token')
       mockOctokit.issues.addLabels.mockRejectedValue(new Error('API Error'))
-      await expect(githubService.addLabel('released')).rejects.toThrow(
+      await expect(githubService.addLabel('released', 123)).rejects.toThrow(
         'API Error'
       )
     })

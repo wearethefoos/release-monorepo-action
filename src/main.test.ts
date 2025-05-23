@@ -27,7 +27,10 @@ const githubServiceMock = {
   getPullRequestFromCommit: vi.fn(),
   wasReleasePR: vi.fn(),
   getManifestFromMain: vi.fn(),
-  wasManifestUpdatedInLastCommit: vi.fn()
+  wasManifestUpdatedInLastCommit: vi.fn(),
+  getLastReleaseVersion: vi.fn(),
+  getChangelogForPackage: vi.fn(),
+  findReleasePRByVersions: vi.fn()
 }
 vi.mock('./github.js', () => ({
   GitHubService: vi.fn(() => githubServiceMock)
@@ -153,15 +156,17 @@ describe('main.ts', () => {
     githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue([
       'feat(core): add new feature'
     ])
-    githubServiceMock.updatePackageVersion.mockResolvedValue(undefined)
     githubServiceMock.createRelease.mockResolvedValue(undefined)
     githubServiceMock.getPullRequestFromCommit.mockResolvedValue(123)
     githubServiceMock.wasReleasePR.mockResolvedValue(true)
+    githubServiceMock.getLastReleaseVersion.mockResolvedValue('1.0.0')
+    githubServiceMock.getChangelogForPackage.mockResolvedValue(
+      '## 1.1.0\n\n- New feature'
+    )
     githubServiceMock.addLabel.mockResolvedValue(undefined)
     await run()
-    expect(githubServiceMock.updatePackageVersion).toHaveBeenCalled()
     expect(githubServiceMock.createRelease).toHaveBeenCalled()
-    expect(githubServiceMock.addLabel).toHaveBeenCalledWith('released')
+    expect(githubServiceMock.addLabel).toHaveBeenCalledWith('released', 123)
     expect(core.setOutput).toHaveBeenCalledWith('version', expect.any(String))
     expect(core.setOutput).toHaveBeenCalledWith('prerelease', false)
   })
@@ -248,14 +253,48 @@ describe('main.ts', () => {
     githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue([
       'feat(core): add new feature'
     ])
-    githubServiceMock.updatePackageVersion.mockResolvedValue(undefined)
     githubServiceMock.createRelease.mockResolvedValue(undefined)
     githubServiceMock.getPullRequestFromCommit.mockResolvedValue(null) // No PR found (squashed merge)
     githubServiceMock.wasManifestUpdatedInLastCommit.mockResolvedValue(true) // Manifest was updated
+    githubServiceMock.getLastReleaseVersion.mockResolvedValue('1.0.0')
+    githubServiceMock.getChangelogForPackage.mockResolvedValue(
+      '## 1.1.0\n\n- New feature'
+    )
     githubServiceMock.addLabel.mockResolvedValue(undefined)
     await run()
-    expect(githubServiceMock.updatePackageVersion).toHaveBeenCalled()
     expect(githubServiceMock.createRelease).toHaveBeenCalled()
+    expect(core.setOutput).toHaveBeenCalledWith('version', expect.any(String))
+    expect(core.setOutput).toHaveBeenCalledWith('prerelease', false)
+  })
+
+  it('should find release PR by versions when commit lookup fails', async () => {
+    const mockCommits = [
+      {
+        commit: {
+          message: 'chore: release packages/core@1.1.0'
+        },
+        sha: 'abc123'
+      }
+    ]
+    githubServiceMock.getPullRequestLabels.mockResolvedValue([])
+    githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue(
+      mockCommits
+    )
+    githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue([
+      'feat(core): add new feature'
+    ])
+    githubServiceMock.createRelease.mockResolvedValue(undefined)
+    githubServiceMock.getPullRequestFromCommit.mockResolvedValue(null) // No PR found from commit
+    githubServiceMock.findReleasePRByVersions.mockResolvedValue(456) // Found PR by versions
+    githubServiceMock.wasReleasePR.mockResolvedValue(true)
+    githubServiceMock.getLastReleaseVersion.mockResolvedValue('1.0.0')
+    githubServiceMock.getChangelogForPackage.mockResolvedValue(
+      '## 1.1.0\n\n- New feature'
+    )
+    githubServiceMock.addLabel.mockResolvedValue(undefined)
+    await run()
+    expect(githubServiceMock.createRelease).toHaveBeenCalled()
+    expect(githubServiceMock.addLabel).toHaveBeenCalledWith('released', 456)
     expect(core.setOutput).toHaveBeenCalledWith('version', expect.any(String))
     expect(core.setOutput).toHaveBeenCalledWith('prerelease', false)
   })

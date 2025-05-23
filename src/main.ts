@@ -109,26 +109,62 @@ export async function run(): Promise<void> {
 
     if (isMergedReleasePR) {
       core.info('This is a merged release PR, creating the release')
-      // Update package versions
-      for (const change of packageChanges) {
-        await github.updatePackageVersion(change.path, change.newVersion)
-      }
+      // Create the release using versions from the manifest
+      const releaseChanges = await Promise.all(
+        Object.entries(manifest).map(async ([path, newVersion]) => {
+          // Adjust path based on rootDir
+          const packagePath =
+            rootDir === '.' ? path : path.replace(rootDir + '/', '')
 
-      // Create the release
-      await github.createRelease(packageChanges)
+          // Get the last release version
+          const currentVersion =
+            (await github.getLastReleaseVersion(packagePath)) || '0.0.0'
 
-      // Add released label to the original PR
+          // Get commits since last release
+          const commits = await github.getCommitsSinceLastRelease(
+            packagePath,
+            allCommits
+          )
+          const conventionalCommits = commits.map((message) => ({
+            ...parseConventionalCommit(message),
+            hash: '' // We don't need the hash for version calculation
+          }))
+
+          // Get the changelog
+          const changelog = await github.getChangelogForPackage(packagePath)
+
+          return {
+            path: packagePath,
+            currentVersion,
+            newVersion,
+            commits: conventionalCommits,
+            changelog
+          }
+        })
+      )
+      await github.createRelease(releaseChanges)
+
+      // Try to find the PR to add the released label
       const latestCommit = allCommits[0]
+      let prNumber: number | null = null
       if (latestCommit) {
-        const prNumber = await github.getPullRequestFromCommit(latestCommit.sha)
-        if (prNumber) {
-          await github.addLabel('released')
+        // First try to find PR from commit
+        prNumber = await github.getPullRequestFromCommit(latestCommit.sha)
+        // If not found, try to find PR by matching versions
+        if (!prNumber) {
+          prNumber = await github.findReleasePRByVersions(manifest)
         }
+      }
+      if (prNumber) {
+        await github.addLabel('released', prNumber)
       }
 
       // Set outputs
-      core.setOutput('version', packageChanges[0].newVersion)
-      core.setOutput('prerelease', isPreRelease)
+      const firstPackage = Object.entries(manifest)[0]
+      if (firstPackage) {
+        core.setOutput('version', firstPackage[1])
+        core.setOutput('prerelease', firstPackage[1].includes('-rc.'))
+      }
     } else {
       core.info('This is a push to main, creating a release PR')
       // This is a push to main, create a PR with the changes

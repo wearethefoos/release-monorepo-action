@@ -38691,21 +38691,23 @@ class GitHubService {
         });
         return pr.labels.map((label) => label.name);
     }
-    async createReleasePullRequest(changes, label = 'release-me', manifestFile = '.release-manifest.json') {
-        // Determine PR title and commit message
-        let title;
+    generateReleasePRTitle(changes) {
         if (changes.length === 1) {
             const change = changes[0];
             if (change.path === '.') {
-                title = `chore: release ${change.newVersion}`;
+                return `chore: release ${change.newVersion}`;
             }
             else {
-                title = `chore: release ${change.path}@${change.newVersion}`;
+                return `chore: release ${change.path}@${change.newVersion}`;
             }
         }
         else {
-            title = 'chore: release main';
+            return 'chore: release main';
         }
+    }
+    async createReleasePullRequest(changes, label = 'release-me', manifestFile = '.release-manifest.json') {
+        // Determine PR title and commit message
+        const title = this.generateReleasePRTitle(changes);
         const commitMessage = title;
         const body = this.generatePullRequestBody(changes);
         if (this.releaseContext.isPullRequest &&
@@ -39011,15 +39013,11 @@ class GitHubService {
         });
         return data.commit.sha;
     }
-    async addLabel(label) {
-        if (!this.releaseContext.isPullRequest ||
-            !this.releaseContext.pullRequestNumber) {
-            return;
-        }
+    async addLabel(label, prNumber) {
         await this.octokit.issues.addLabels({
             owner: this.releaseContext.owner,
             repo: this.releaseContext.repo,
-            issue_number: this.releaseContext.pullRequestNumber,
+            issue_number: prNumber,
             labels: [label]
         });
     }
@@ -39270,6 +39268,95 @@ class GitHubService {
             return false;
         }
     }
+    async getLastReleaseVersion(packagePath) {
+        try {
+            const { data: releases } = await this.octokit.repos.listReleases({
+                owner: this.releaseContext.owner,
+                repo: this.releaseContext.repo
+            });
+            // Find the most recent non-prerelease release for this package
+            const lastRelease = releases.find((release) => {
+                if (release.prerelease)
+                    return false;
+                const tagName = release.tag_name;
+                if (packagePath === '.') {
+                    return tagName.startsWith('v');
+                }
+                return tagName.startsWith(`${packagePath}-v`);
+            });
+            if (!lastRelease)
+                return null;
+            // Extract version from tag name
+            const tagName = lastRelease.tag_name;
+            if (packagePath === '.') {
+                return tagName.substring(1); // Remove 'v' prefix
+            }
+            return tagName.substring(packagePath.length + 2); // Remove 'packagePath-v' prefix
+        }
+        catch (error) {
+            coreExports.warning(`Failed to get last release version for ${packagePath}: ${error}`);
+            return null;
+        }
+    }
+    async getChangelogForPackage(packagePath) {
+        try {
+            const changelogPath = path__namespace.join(packagePath, 'CHANGELOG.md');
+            const { data } = await this.octokit.repos.getContent({
+                owner: this.releaseContext.owner,
+                repo: this.releaseContext.repo,
+                path: changelogPath,
+                ref: 'main'
+            });
+            if (!('content' in data)) {
+                return '';
+            }
+            const content = Buffer.from(data.content, 'base64').toString('utf-8');
+            const lines = content.split('\n');
+            // Find the first version section
+            const versionIndex = lines.findIndex((line) => line.startsWith('## '));
+            if (versionIndex === -1)
+                return '';
+            // Get everything up to the next version section or end of file
+            const nextVersionIndex = lines.findIndex((line, i) => i > versionIndex && line.startsWith('## '));
+            const endIndex = nextVersionIndex === -1 ? lines.length : nextVersionIndex;
+            return lines.slice(versionIndex, endIndex).join('\n').trim();
+        }
+        catch (error) {
+            coreExports.warning(`Failed to get changelog for ${packagePath}: ${error}`);
+            return '';
+        }
+    }
+    async findReleasePRByVersions(manifest) {
+        try {
+            // Get all closed PRs with release-me label
+            const { data: prs } = await this.octokit.pulls.list({
+                owner: this.releaseContext.owner,
+                repo: this.releaseContext.repo,
+                state: 'closed',
+                labels: ['release-me'],
+                sort: 'updated',
+                direction: 'desc',
+                per_page: 10 // Look at the 10 most recent ones
+            });
+            // Convert manifest to PackageChanges format
+            const changes = Object.entries(manifest).map(([path, newVersion]) => ({
+                path,
+                currentVersion: '', // We don't need this for title matching
+                newVersion,
+                commits: [], // We don't need this for title matching
+                changelog: '' // We don't need this for title matching
+            }));
+            // Generate the expected title
+            const expectedTitle = this.generateReleasePRTitle(changes);
+            // Find the first PR that matches our title
+            const matchingPR = prs.find((pr) => pr.title === expectedTitle);
+            return matchingPR ? matchingPR.number : null;
+        }
+        catch (error) {
+            coreExports.warning(`Failed to find release PR: ${error}`);
+            return null;
+        }
+    }
 }
 
 /**
@@ -39354,23 +39441,49 @@ async function run() {
         })();
         if (isMergedReleasePR) {
             coreExports.info('This is a merged release PR, creating the release');
-            // Update package versions
-            for (const change of packageChanges) {
-                await github.updatePackageVersion(change.path, change.newVersion);
-            }
-            // Create the release
-            await github.createRelease(packageChanges);
-            // Add released label to the original PR
+            // Create the release using versions from the manifest
+            const releaseChanges = await Promise.all(Object.entries(manifest).map(async ([path, newVersion]) => {
+                // Adjust path based on rootDir
+                const packagePath = rootDir === '.' ? path : path.replace(rootDir + '/', '');
+                // Get the last release version
+                const currentVersion = (await github.getLastReleaseVersion(packagePath)) || '0.0.0';
+                // Get commits since last release
+                const commits = await github.getCommitsSinceLastRelease(packagePath, allCommits);
+                const conventionalCommits = commits.map((message) => ({
+                    ...parseConventionalCommit(message),
+                    hash: '' // We don't need the hash for version calculation
+                }));
+                // Get the changelog
+                const changelog = await github.getChangelogForPackage(packagePath);
+                return {
+                    path: packagePath,
+                    currentVersion,
+                    newVersion,
+                    commits: conventionalCommits,
+                    changelog
+                };
+            }));
+            await github.createRelease(releaseChanges);
+            // Try to find the PR to add the released label
             const latestCommit = allCommits[0];
+            let prNumber = null;
             if (latestCommit) {
-                const prNumber = await github.getPullRequestFromCommit(latestCommit.sha);
-                if (prNumber) {
-                    await github.addLabel('released');
+                // First try to find PR from commit
+                prNumber = await github.getPullRequestFromCommit(latestCommit.sha);
+                // If not found, try to find PR by matching versions
+                if (!prNumber) {
+                    prNumber = await github.findReleasePRByVersions(manifest);
                 }
             }
+            if (prNumber) {
+                await github.addLabel('released', prNumber);
+            }
             // Set outputs
-            coreExports.setOutput('version', packageChanges[0].newVersion);
-            coreExports.setOutput('prerelease', isPreRelease);
+            const firstPackage = Object.entries(manifest)[0];
+            if (firstPackage) {
+                coreExports.setOutput('version', firstPackage[1]);
+                coreExports.setOutput('prerelease', firstPackage[1].includes('-rc.'));
+            }
         }
         else {
             coreExports.info('This is a push to main, creating a release PR');

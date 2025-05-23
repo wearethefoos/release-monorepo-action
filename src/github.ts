@@ -104,23 +104,26 @@ export class GitHubService {
     return pr.labels.map((label) => label.name)
   }
 
+  private generateReleasePRTitle(changes: PackageChanges[]): string {
+    if (changes.length === 1) {
+      const change = changes[0]
+      if (change.path === '.') {
+        return `chore: release ${change.newVersion}`
+      } else {
+        return `chore: release ${change.path}@${change.newVersion}`
+      }
+    } else {
+      return 'chore: release main'
+    }
+  }
+
   async createReleasePullRequest(
     changes: PackageChanges[],
     label: string = 'release-me',
     manifestFile: string = '.release-manifest.json'
   ): Promise<void> {
     // Determine PR title and commit message
-    let title: string
-    if (changes.length === 1) {
-      const change = changes[0]
-      if (change.path === '.') {
-        title = `chore: release ${change.newVersion}`
-      } else {
-        title = `chore: release ${change.path}@${change.newVersion}`
-      }
-    } else {
-      title = 'chore: release main'
-    }
+    const title = this.generateReleasePRTitle(changes)
     const commitMessage = title
     const body = this.generatePullRequestBody(changes)
 
@@ -463,18 +466,11 @@ export class GitHubService {
     return data.commit.sha
   }
 
-  async addLabel(label: string): Promise<void> {
-    if (
-      !this.releaseContext.isPullRequest ||
-      !this.releaseContext.pullRequestNumber
-    ) {
-      return
-    }
-
+  async addLabel(label: string, prNumber: number): Promise<void> {
     await this.octokit.issues.addLabels({
       owner: this.releaseContext.owner,
       repo: this.releaseContext.repo,
-      issue_number: this.releaseContext.pullRequestNumber,
+      issue_number: prNumber,
       labels: [label]
     })
   }
@@ -794,6 +790,109 @@ export class GitHubService {
     } catch (error) {
       core.warning(`Failed to check if manifest was updated: ${error}`)
       return false
+    }
+  }
+
+  async getLastReleaseVersion(packagePath: string): Promise<string | null> {
+    try {
+      const { data: releases } = await this.octokit.repos.listReleases({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo
+      })
+
+      // Find the most recent non-prerelease release for this package
+      const lastRelease = releases.find((release) => {
+        if (release.prerelease) return false
+        const tagName = release.tag_name
+        if (packagePath === '.') {
+          return tagName.startsWith('v')
+        }
+        return tagName.startsWith(`${packagePath}-v`)
+      })
+
+      if (!lastRelease) return null
+
+      // Extract version from tag name
+      const tagName = lastRelease.tag_name
+      if (packagePath === '.') {
+        return tagName.substring(1) // Remove 'v' prefix
+      }
+      return tagName.substring(packagePath.length + 2) // Remove 'packagePath-v' prefix
+    } catch (error) {
+      core.warning(
+        `Failed to get last release version for ${packagePath}: ${error}`
+      )
+      return null
+    }
+  }
+
+  async getChangelogForPackage(packagePath: string): Promise<string> {
+    try {
+      const changelogPath = path.join(packagePath, 'CHANGELOG.md')
+      const { data } = await this.octokit.repos.getContent({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        path: changelogPath,
+        ref: 'main'
+      })
+
+      if (!('content' in data)) {
+        return ''
+      }
+
+      const content = Buffer.from(data.content, 'base64').toString('utf-8')
+      const lines = content.split('\n')
+
+      // Find the first version section
+      const versionIndex = lines.findIndex((line) => line.startsWith('## '))
+      if (versionIndex === -1) return ''
+
+      // Get everything up to the next version section or end of file
+      const nextVersionIndex = lines.findIndex(
+        (line, i) => i > versionIndex && line.startsWith('## ')
+      )
+      const endIndex = nextVersionIndex === -1 ? lines.length : nextVersionIndex
+
+      return lines.slice(versionIndex, endIndex).join('\n').trim()
+    } catch (error) {
+      core.warning(`Failed to get changelog for ${packagePath}: ${error}`)
+      return ''
+    }
+  }
+
+  async findReleasePRByVersions(
+    manifest: Record<string, string>
+  ): Promise<number | null> {
+    try {
+      // Get all closed PRs with release-me label
+      const { data: prs } = await this.octokit.pulls.list({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        state: 'closed',
+        labels: ['release-me'],
+        sort: 'updated',
+        direction: 'desc',
+        per_page: 10 // Look at the 10 most recent ones
+      })
+
+      // Convert manifest to PackageChanges format
+      const changes = Object.entries(manifest).map(([path, newVersion]) => ({
+        path,
+        currentVersion: '', // We don't need this for title matching
+        newVersion,
+        commits: [], // We don't need this for title matching
+        changelog: '' // We don't need this for title matching
+      }))
+
+      // Generate the expected title
+      const expectedTitle = this.generateReleasePRTitle(changes)
+
+      // Find the first PR that matches our title
+      const matchingPR = prs.find((pr) => pr.title === expectedTitle)
+      return matchingPR ? matchingPR.number : null
+    } catch (error) {
+      core.warning(`Failed to find release PR: ${error}`)
+      return null
     }
   }
 }
