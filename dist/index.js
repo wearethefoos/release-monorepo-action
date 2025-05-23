@@ -39013,7 +39013,24 @@ class GitHubService {
         });
         return data.commit.sha;
     }
+    async removeLabel(label, prNumber) {
+        await this.octokit.issues.removeLabel({
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo,
+            issue_number: prNumber,
+            name: label
+        });
+    }
     async addLabel(label, prNumber) {
+        // If we're adding the 'released' label, remove the 'release-me' label
+        if (label === 'released') {
+            try {
+                await this.removeLabel('release-me', prNumber);
+            }
+            catch (error) {
+                coreExports.warning(`Failed to remove release-me label: ${error}`);
+            }
+        }
         await this.octokit.issues.addLabels({
             owner: this.releaseContext.owner,
             repo: this.releaseContext.repo,

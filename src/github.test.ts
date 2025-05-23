@@ -1,9 +1,10 @@
 import { context } from '@actions/github'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { GitHubService } from './github.js'
+import { GitHubService } from './github'
 import { PackageChanges } from './types.js'
 import * as fs from 'fs'
 import * as path from 'path'
+import * as core from '@actions/core'
 
 // Mock @actions/core
 vi.mock('@actions/core', () => ({
@@ -43,7 +44,8 @@ const mockOctokit = {
     list: vi.fn()
   },
   issues: {
-    addLabels: vi.fn()
+    addLabels: vi.fn(),
+    removeLabel: vi.fn()
   },
   request: vi.fn()
 }
@@ -1340,10 +1342,44 @@ describe('GitHubService', () => {
     })
   })
 
+  describe('removeLabel', () => {
+    it('should remove label from PR', async () => {
+      await githubService.removeLabel('test-label', 123)
+      expect(mockOctokit.issues.removeLabel).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        issue_number: 123,
+        name: 'test-label'
+      })
+    })
+
+    it('should handle API errors', async () => {
+      mockOctokit.issues.removeLabel.mockRejectedValue(new Error('API Error'))
+      await expect(
+        githubService.removeLabel('test-label', 123)
+      ).rejects.toThrow('API Error')
+    })
+  })
+
   describe('addLabel', () => {
-    it('should add a label to the PR', async () => {
-      mockOctokit.issues.addLabels.mockResolvedValue({})
+    it('should add label to PR', async () => {
+      await githubService.addLabel('test-label', 123)
+      expect(mockOctokit.issues.addLabels).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        issue_number: 123,
+        labels: ['test-label']
+      })
+    })
+
+    it('should remove release-me label when adding released label', async () => {
       await githubService.addLabel('released', 123)
+      expect(mockOctokit.issues.removeLabel).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        issue_number: 123,
+        name: 'release-me'
+      })
       expect(mockOctokit.issues.addLabels).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
@@ -1352,11 +1388,18 @@ describe('GitHubService', () => {
       })
     })
 
-    it('should handle API errors', async () => {
-      mockOctokit.issues.addLabels.mockRejectedValue(new Error('API Error'))
-      await expect(githubService.addLabel('released', 123)).rejects.toThrow(
-        'API Error'
+    it('should handle error when removing release-me label', async () => {
+      mockOctokit.issues.removeLabel.mockRejectedValue(new Error('API Error'))
+      await githubService.addLabel('released', 123)
+      expect(core.warning).toHaveBeenCalledWith(
+        'Failed to remove release-me label: Error: API Error'
       )
+      expect(mockOctokit.issues.addLabels).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        issue_number: 123,
+        labels: ['released']
+      })
     })
   })
 
