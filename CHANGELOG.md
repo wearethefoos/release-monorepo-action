@@ -9,15 +9,6 @@
 
 ### 🐛 Fixes
 
-- off by one error
-- address various issues with versioning and commits
-- create proper release PRs
-- changelog formatting
-- Conventional PR titles and replace commits
-- replace PR history on update
-- PR body format
-- PR formatting and reuse the same branch
-- manifest updates
 - improve release PR lifecycle
 - replace release ref
 - properly replace release ref
