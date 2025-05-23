@@ -39246,6 +39246,30 @@ class GitHubService {
             return {};
         }
     }
+    async wasManifestUpdatedInLastCommit(manifestFile, rootDir = '.') {
+        try {
+            const filePath = rootDir === '.' ? manifestFile : path__namespace.join(rootDir, manifestFile);
+            const { data: commits } = await this.octokit.repos.listCommits({
+                owner: this.releaseContext.owner,
+                repo: this.releaseContext.repo,
+                per_page: 1
+            });
+            if (commits.length === 0) {
+                return false;
+            }
+            const latestCommit = commits[0];
+            const { data: commit } = await this.octokit.repos.getCommit({
+                owner: this.releaseContext.owner,
+                repo: this.releaseContext.repo,
+                ref: latestCommit.sha
+            });
+            return commit.files?.some((file) => file.filename === filePath) ?? false;
+        }
+        catch (error) {
+            coreExports.warning(`Failed to check if manifest was updated: ${error}`);
+            return false;
+        }
+    }
 }
 
 /**
@@ -39316,16 +39340,17 @@ async function run() {
         }
         // Check if this is a merged release PR by looking at the commit message and PR state
         const isMergedReleasePR = await (async () => {
-            // Get the most recent commit
+            // First try to find the PR from the commit
             const latestCommit = allCommits[0];
             if (!latestCommit)
                 return false;
-            // Check if this commit is from a merged PR
             const prNumber = await github.getPullRequestFromCommit(latestCommit.sha);
-            if (!prNumber)
-                return false;
-            // Check if this was a release PR
-            return await github.wasReleasePR(prNumber);
+            if (prNumber) {
+                // If we found a PR, check if it was a release PR
+                return await github.wasReleasePR(prNumber);
+            }
+            // If no PR found (e.g. squashed merge), check if the manifest was updated
+            return await github.wasManifestUpdatedInLastCommit(manifestFile, rootDir);
         })();
         if (isMergedReleasePR) {
             coreExports.info('This is a merged release PR, creating the release');

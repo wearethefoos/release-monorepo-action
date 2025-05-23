@@ -765,4 +765,35 @@ export class GitHubService {
       return {}
     }
   }
+
+  async wasManifestUpdatedInLastCommit(
+    manifestFile: string,
+    rootDir: string = '.'
+  ): Promise<boolean> {
+    try {
+      const filePath =
+        rootDir === '.' ? manifestFile : path.join(rootDir, manifestFile)
+      const { data: commits } = await this.octokit.repos.listCommits({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        per_page: 1
+      })
+
+      if (commits.length === 0) {
+        return false
+      }
+
+      const latestCommit = commits[0]
+      const { data: commit } = await this.octokit.repos.getCommit({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        ref: latestCommit.sha
+      })
+
+      return commit.files?.some((file) => file.filename === filePath) ?? false
+    } catch (error) {
+      core.warning(`Failed to check if manifest was updated: ${error}`)
+      return false
+    }
+  }
 }

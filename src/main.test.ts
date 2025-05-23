@@ -26,7 +26,8 @@ const githubServiceMock = {
   addLabel: vi.fn(),
   getPullRequestFromCommit: vi.fn(),
   wasReleasePR: vi.fn(),
-  getManifestFromMain: vi.fn()
+  getManifestFromMain: vi.fn(),
+  wasManifestUpdatedInLastCommit: vi.fn()
 }
 vi.mock('./github.js', () => ({
   GitHubService: vi.fn(() => githubServiceMock)
@@ -229,5 +230,33 @@ describe('main.ts', () => {
     expect(core.info).toHaveBeenCalledWith(
       'No changes requiring version updates found'
     )
+  })
+
+  it('should create release when manifest was updated in last commit', async () => {
+    const mockCommits = [
+      {
+        commit: {
+          message: 'chore: release packages/core@1.1.0'
+        },
+        sha: 'abc123'
+      }
+    ]
+    githubServiceMock.getPullRequestLabels.mockResolvedValue([])
+    githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue(
+      mockCommits
+    )
+    githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue([
+      'feat(core): add new feature'
+    ])
+    githubServiceMock.updatePackageVersion.mockResolvedValue(undefined)
+    githubServiceMock.createRelease.mockResolvedValue(undefined)
+    githubServiceMock.getPullRequestFromCommit.mockResolvedValue(null) // No PR found (squashed merge)
+    githubServiceMock.wasManifestUpdatedInLastCommit.mockResolvedValue(true) // Manifest was updated
+    githubServiceMock.addLabel.mockResolvedValue(undefined)
+    await run()
+    expect(githubServiceMock.updatePackageVersion).toHaveBeenCalled()
+    expect(githubServiceMock.createRelease).toHaveBeenCalled()
+    expect(core.setOutput).toHaveBeenCalledWith('version', expect.any(String))
+    expect(core.setOutput).toHaveBeenCalledWith('prerelease', false)
   })
 })

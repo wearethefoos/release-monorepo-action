@@ -93,16 +93,18 @@ export async function run(): Promise<void> {
 
     // Check if this is a merged release PR by looking at the commit message and PR state
     const isMergedReleasePR = await (async () => {
-      // Get the most recent commit
+      // First try to find the PR from the commit
       const latestCommit = allCommits[0]
       if (!latestCommit) return false
 
-      // Check if this commit is from a merged PR
       const prNumber = await github.getPullRequestFromCommit(latestCommit.sha)
-      if (!prNumber) return false
+      if (prNumber) {
+        // If we found a PR, check if it was a release PR
+        return await github.wasReleasePR(prNumber)
+      }
 
-      // Check if this was a release PR
-      return await github.wasReleasePR(prNumber)
+      // If no PR found (e.g. squashed merge), check if the manifest was updated
+      return await github.wasManifestUpdatedInLastCommit(manifestFile, rootDir)
     })()
 
     if (isMergedReleasePR) {
