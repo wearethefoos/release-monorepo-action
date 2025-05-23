@@ -25,7 +25,8 @@ const githubServiceMock = {
   createReleasePullRequest: vi.fn(),
   addLabel: vi.fn(),
   getPullRequestFromCommit: vi.fn(),
-  wasReleasePR: vi.fn()
+  wasReleasePR: vi.fn(),
+  getManifestFromMain: vi.fn()
 }
 vi.mock('./github.js', () => ({
   GitHubService: vi.fn(() => githubServiceMock)
@@ -61,10 +62,8 @@ describe('main.ts', () => {
           return ''
       }
     })
-    // Mock fs.readFileSync
-    ;(fs.readFileSync as unknown as Mock).mockReturnValue(
-      JSON.stringify(mockManifest)
-    )
+    // Mock getManifestFromMain
+    githubServiceMock.getManifestFromMain.mockResolvedValue(mockManifest)
   })
 
   it('should exit early if no changes requiring version updates are found', async () => {

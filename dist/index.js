@@ -38774,7 +38774,7 @@ class GitHubService {
                         changelogContent = `# ${packageName}\n\n${changelogContent}`;
                     }
                     // Add the new version section after the level 1 heading
-                    const newVersionSection = `## ${change.newVersion} (${new Date().toISOString().split('T')[0]})\n\n${change.changelog}\n\n`;
+                    const newVersionSection = `## ${change.newVersion} (${new Date().toISOString().split('T')[0]})\n\n${change.changelog}\n`;
                     const lines = changelogContent.split('\n');
                     const headingIndex = lines.findIndex((line) => line.startsWith('# '));
                     if (headingIndex !== -1) {
@@ -38868,14 +38868,7 @@ class GitHubService {
             catch (error) {
                 if (error instanceof Error &&
                     error.message.includes('Reference already exists')) {
-                    coreExports.info('Branch already exists, forcing update');
-                    await this.octokit.git.updateRef({
-                        owner: this.releaseContext.owner,
-                        repo: this.releaseContext.repo,
-                        ref: `refs/heads/${branchName}`,
-                        sha: await this.getMainSha(),
-                        force: true // Force update to replace existing commits
-                    });
+                    coreExports.info('Branch already exists, skipping creation');
                 }
                 else {
                     throw error;
@@ -38914,7 +38907,7 @@ class GitHubService {
                     changelogContent = `# ${packageName}\n\n${changelogContent}`;
                 }
                 // Add the new version section after the level 1 heading
-                const newVersionSection = `## ${change.newVersion} (${new Date().toISOString().split('T')[0]})\n\n${change.changelog}`;
+                const newVersionSection = `## ${change.newVersion} (${new Date().toISOString().split('T')[0]})\n\n${change.changelog}\n`;
                 const lines = changelogContent.split('\n');
                 const headingIndex = lines.findIndex((line) => line.startsWith('# '));
                 if (headingIndex !== -1) {
@@ -39233,6 +39226,26 @@ class GitHubService {
             return false;
         }
     }
+    async getManifestFromMain(manifestFile, rootDir = '.') {
+        try {
+            const filePath = rootDir === '.' ? manifestFile : path__namespace.join(rootDir, manifestFile);
+            const { data } = await this.octokit.repos.getContent({
+                owner: this.releaseContext.owner,
+                repo: this.releaseContext.repo,
+                path: filePath,
+                ref: 'main'
+            });
+            if (!('content' in data)) {
+                throw new Error(`Manifest file ${manifestFile} not found in main branch`);
+            }
+            const content = Buffer.from(data.content, 'base64').toString('utf-8');
+            return JSON.parse(content);
+        }
+        catch (error) {
+            coreExports.warning(`Failed to get manifest from main: ${error}`);
+            return {};
+        }
+    }
 }
 
 /**
@@ -39260,9 +39273,12 @@ async function run() {
             coreExports.info('prereleases are disabled and this is a prerelease PR, skipping');
             return;
         }
-        // Read and parse the manifest file
-        const manifestContent = fs__namespace.readFileSync(path.join(rootDir, manifestFile), 'utf-8');
-        const manifest = JSON.parse(manifestContent);
+        // Read and parse the manifest file from main branch
+        const manifest = await github.getManifestFromMain(manifestFile, rootDir);
+        if (Object.keys(manifest).length === 0) {
+            coreExports.warning(`No manifest found in main branch at ${manifestFile} with root dir ${rootDir}`);
+            return;
+        }
         // Get commits for each package
         const allCommits = await github.getAllCommitsSinceLastRelease(true);
         if (!allCommits || allCommits.length === 0) {

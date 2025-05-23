@@ -201,7 +201,7 @@ export class GitHubService {
           }
 
           // Add the new version section after the level 1 heading
-          const newVersionSection = `## ${change.newVersion} (${new Date().toISOString().split('T')[0]})\n\n${change.changelog}\n\n`
+          const newVersionSection = `## ${change.newVersion} (${new Date().toISOString().split('T')[0]})\n\n${change.changelog}\n`
           const lines = changelogContent.split('\n')
           const headingIndex = lines.findIndex((line) => line.startsWith('# '))
           if (headingIndex !== -1) {
@@ -303,14 +303,7 @@ export class GitHubService {
           error instanceof Error &&
           error.message.includes('Reference already exists')
         ) {
-          core.info('Branch already exists, forcing update')
-          await this.octokit.git.updateRef({
-            owner: this.releaseContext.owner,
-            repo: this.releaseContext.repo,
-            ref: `refs/heads/${branchName}`,
-            sha: await this.getMainSha(),
-            force: true // Force update to replace existing commits
-          })
+          core.info('Branch already exists, skipping creation')
         } else {
           throw error
         }
@@ -354,7 +347,7 @@ export class GitHubService {
         }
 
         // Add the new version section after the level 1 heading
-        const newVersionSection = `## ${change.newVersion} (${new Date().toISOString().split('T')[0]})\n\n${change.changelog}`
+        const newVersionSection = `## ${change.newVersion} (${new Date().toISOString().split('T')[0]})\n\n${change.changelog}\n`
         const lines = changelogContent.split('\n')
         const headingIndex = lines.findIndex((line) => line.startsWith('# '))
         if (headingIndex !== -1) {
@@ -742,6 +735,34 @@ export class GitHubService {
     } catch (error) {
       core.warning(`Failed to get PR ${prNumber}: ${error}`)
       return false
+    }
+  }
+
+  async getManifestFromMain(
+    manifestFile: string,
+    rootDir: string = '.'
+  ): Promise<Record<string, string>> {
+    try {
+      const filePath =
+        rootDir === '.' ? manifestFile : path.join(rootDir, manifestFile)
+      const { data } = await this.octokit.repos.getContent({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        path: filePath,
+        ref: 'main'
+      })
+
+      if (!('content' in data)) {
+        throw new Error(
+          `Manifest file ${manifestFile} not found in main branch`
+        )
+      }
+
+      const content = Buffer.from(data.content, 'base64').toString('utf-8')
+      return JSON.parse(content)
+    } catch (error) {
+      core.warning(`Failed to get manifest from main: ${error}`)
+      return {}
     }
   }
 }

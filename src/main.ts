@@ -1,8 +1,6 @@
 import * as core from '@actions/core'
-import * as fs from 'fs'
 import { GitHubService } from './github.js'
-import { PackageManifest, ConventionalCommit, PackageChanges } from './types.js'
-import path from 'path'
+import { ConventionalCommit, PackageChanges } from './types.js'
 import {
   parseConventionalCommit,
   determineVersionBump,
@@ -41,12 +39,14 @@ export async function run(): Promise<void> {
       return
     }
 
-    // Read and parse the manifest file
-    const manifestContent = fs.readFileSync(
-      path.join(rootDir, manifestFile),
-      'utf-8'
-    )
-    const manifest: PackageManifest = JSON.parse(manifestContent)
+    // Read and parse the manifest file from main branch
+    const manifest = await github.getManifestFromMain(manifestFile, rootDir)
+    if (Object.keys(manifest).length === 0) {
+      core.warning(
+        `No manifest found in main branch at ${manifestFile} with root dir ${rootDir}`
+      )
+      return
+    }
 
     // Get commits for each package
     const allCommits = await github.getAllCommitsSinceLastRelease(true)
