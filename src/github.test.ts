@@ -45,7 +45,8 @@ const mockOctokit = {
   },
   issues: {
     addLabels: vi.fn(),
-    removeLabel: vi.fn()
+    removeLabel: vi.fn(),
+    createComment: vi.fn()
   },
   request: vi.fn()
 }
@@ -1854,6 +1855,80 @@ describe('GitHubService', () => {
         }
       ])
       expect(title).toBe('chore: release main')
+    })
+  })
+
+  describe('createComment', () => {
+    it('should create a comment on the PR', async () => {
+      // Mock GitHub context to ensure we're in a PR context
+      vi.mocked(context).payload.pull_request = {
+        number: 123,
+        base: { ref: 'test-base' },
+        head: { ref: 'test-head' }
+      }
+      githubService = new GitHubService('test-token')
+
+      const comment = 'Test comment'
+      await githubService.createComment(comment)
+      expect(mockOctokit.issues.createComment).toHaveBeenCalledWith({
+        owner: 'test-owner',
+        repo: 'test-repo',
+        issue_number: 123,
+        body: comment
+      })
+    })
+
+    it('should not create a comment if not in a PR context', async () => {
+      // Mock GitHub context to simulate not being in a PR
+      vi.mocked(context).payload.pull_request = undefined
+      githubService = new GitHubService('test-token')
+
+      const comment = 'Test comment'
+      await githubService.createComment(comment)
+      expect(mockOctokit.issues.createComment).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('getLatestRcVersion', () => {
+    it('should return next RC number when previous RCs exist', async () => {
+      const mockReleases = {
+        data: [
+          { tag_name: 'packages/core-v1.0.0-rc.2', prerelease: true },
+          { tag_name: 'packages/core-v1.0.0-rc.1', prerelease: true }
+        ]
+      }
+      mockOctokit.repos.listReleases.mockResolvedValue(mockReleases)
+
+      const rcNumber = await githubService.getLatestRcVersion(
+        'packages/core',
+        '1.0.0'
+      )
+      expect(rcNumber).toBe(3)
+    })
+
+    it('should return 1 when no previous RCs exist', async () => {
+      const mockReleases = {
+        data: []
+      }
+      mockOctokit.repos.listReleases.mockResolvedValue(mockReleases)
+
+      const rcNumber = await githubService.getLatestRcVersion(
+        'packages/core',
+        '1.0.0'
+      )
+      expect(rcNumber).toBe(1)
+    })
+
+    it('should handle API errors', async () => {
+      mockOctokit.repos.listReleases.mockRejectedValue(new Error('API Error'))
+      const rcNumber = await githubService.getLatestRcVersion(
+        'packages/core',
+        '1.0.0'
+      )
+      expect(rcNumber).toBe(1) // Should return 1 as fallback
+      expect(core.warning).toHaveBeenCalledWith(
+        'Failed to get latest RC version: Error: API Error'
+      )
     })
   })
 })

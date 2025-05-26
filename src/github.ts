@@ -939,4 +939,45 @@ export class GitHubService {
       return null
     }
   }
+
+  async createComment(body: string): Promise<void> {
+    if (!this.releaseContext.pullRequestNumber) {
+      return
+    }
+    await this.octokit.issues.createComment({
+      owner: this.releaseContext.owner,
+      repo: this.releaseContext.repo,
+      issue_number: this.releaseContext.pullRequestNumber,
+      body
+    })
+  }
+
+  async getLatestRcVersion(
+    packagePath: string,
+    baseVersion: string
+  ): Promise<number> {
+    try {
+      const { data: releases } = await this.octokit.repos.listReleases({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo
+      })
+
+      // Find the latest RC version for this package
+      const rcRegex = new RegExp(`${packagePath}-v${baseVersion}-rc\\.(\\d+)`)
+      const latestRc = releases
+        .filter((release) => rcRegex.test(release.tag_name))
+        .sort((a, b) => {
+          const aMatch = a.tag_name.match(rcRegex)
+          const bMatch = b.tag_name.match(rcRegex)
+          if (!aMatch || !bMatch) return 0
+          return parseInt(bMatch[1]) - parseInt(aMatch[1])
+        })[0]
+
+      // Return the next RC number
+      return latestRc ? parseInt(latestRc.tag_name.match(rcRegex)![1]) + 1 : 1
+    } catch (error) {
+      core.warning(`Failed to get latest RC version: ${error}`)
+      return 1
+    }
+  }
 }

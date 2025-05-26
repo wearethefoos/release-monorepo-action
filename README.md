@@ -11,6 +11,7 @@ accordingly.
 - Creates GitHub releases with changelogs
 - Updates package versions in manifest files
 - Handles multiple packages in a monorepo setup
+- Tag pull requests to create prereleases
 
 ## Inputs
 

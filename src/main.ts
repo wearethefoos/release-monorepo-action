@@ -1,10 +1,10 @@
 import * as core from '@actions/core'
+import { context } from '@actions/github'
 import { GitHubService } from './github.js'
-import { ConventionalCommit, PackageChanges } from './types.js'
+import { PackageChanges } from './types.js'
 import {
   parseConventionalCommit,
   determineVersionBump,
-  calculateNewVersion,
   generateChangelog
 } from './version.js'
 
@@ -28,6 +28,7 @@ export async function run(): Promise<void> {
       core.info(
         'Seems we are on an old release-main branch that does not exist anymore, nothing to do'
       )
+      core.debug('Returning early: isDeletedReleaseBranch')
       return
     }
 
@@ -36,15 +37,20 @@ export async function run(): Promise<void> {
     // Check if this is a release PR
     if (labels.includes('released')) {
       core.info('This PR has already been released, skipping')
+      core.debug('Returning early: PR already released')
       return
     }
 
     // Check if this is a prerelease PR
-    const isPreRelease = labels.includes(prereleaseLabel)
-    if (!createPreRelease && isPreRelease) {
+    const isPrerelease = labels.includes(prereleaseLabel)
+    if (isPrerelease && !createPreRelease) {
       core.info(
         'prereleases are disabled and this is a prerelease PR, skipping'
       )
+      await github.createComment(
+        `⚠️ Prereleases are currently disabled. To enable prereleases, set the input "create-prerelease" to true in your workflow.`
+      )
+      core.debug('Returning early: prerelease PR but prereleases disabled')
       return
     }
 
@@ -54,131 +60,111 @@ export async function run(): Promise<void> {
       core.warning(
         `No manifest found in main branch at ${manifestFile} with root dir ${rootDir}`
       )
+      core.debug('Returning early: manifest is empty')
       return
     }
 
-    // Get commits for each package
-    const allCommits = await github.getAllCommitsSinceLastRelease(true)
-    if (!allCommits || allCommits.length === 0) {
+    // Get all commits since last release
+    const allCommits = await github.getAllCommitsSinceLastRelease()
+    if (allCommits.length === 0) {
       core.info('No changes requiring version updates found')
+      core.debug('Returning early: no commits since last release')
       return
     }
 
-    const packageChanges: PackageChanges[] = []
+    // Calculate version changes for each package
+    const changes: PackageChanges[] = []
     for (const [packagePath, currentVersion] of Object.entries(manifest)) {
-      // Pass allCommits to avoid duplicate API calls
       const commits = await github.getCommitsSinceLastRelease(
         packagePath,
         allCommits
       )
-      if (commits.length === 0) {
-        continue
+      if (commits.length === 0) continue
+
+      const parsedCommits = commits.map(parseConventionalCommit)
+      const versionBump = determineVersionBump(parsedCommits)
+      if (!versionBump) continue
+
+      let newVersion = currentVersion
+      if (versionBump === 'major') {
+        newVersion = `${parseInt(currentVersion.split('.')[0]) + 1}.0.0`
+      } else if (versionBump === 'minor') {
+        const [major, minor] = currentVersion.split('.')
+        newVersion = `${major}.${parseInt(minor) + 1}.0`
+      } else if (versionBump === 'patch') {
+        const [major, minor, patch] = currentVersion.split('.')
+        newVersion = `${major}.${minor}.${parseInt(patch) + 1}`
       }
-      const conventionalCommits: ConventionalCommit[] = commits.map(
-        (message) => ({
-          ...parseConventionalCommit(message),
-          hash: '' // We don't need the hash for version calculation
-        })
-      )
-      const bump = determineVersionBump(conventionalCommits)
-      if (bump === 'none') {
-        continue
+
+      // If this is a prerelease, append rc.<number>
+      if (isPrerelease) {
+        const rcNumber = await github.getLatestRcVersion(
+          packagePath,
+          newVersion
+        )
+        newVersion = `${newVersion}-rc.${rcNumber}`
       }
-      const newVersion = calculateNewVersion(currentVersion, bump, isPreRelease)
-      const changelog = generateChangelog(conventionalCommits)
-      packageChanges.push({
+
+      changes.push({
         path: packagePath,
         currentVersion,
         newVersion,
-        commits: conventionalCommits,
-        changelog
+        commits: parsedCommits,
+        changelog: generateChangelog(parsedCommits)
       })
     }
 
-    if (packageChanges.length === 0) {
+    if (changes.length === 0) {
       core.info('No changes requiring version updates found')
+      core.debug('Returning early: no version changes for any package')
       return
     }
 
-    // Check if this is a merged release PR by looking at the commit message and PR state
-    const isMergedReleasePR = await (async () => {
-      // First try to find the PR from the commit
-      const latestCommit = allCommits[0]
-      if (!latestCommit) return false
+    // Set prerelease flag in output
+    core.setOutput('prerelease', isPrerelease)
 
-      const prNumber = await github.getPullRequestFromCommit(latestCommit.sha)
-      if (prNumber) {
-        // If we found a PR, check if it was a release PR
-        return await github.wasReleasePR(prNumber)
+    // Check if this is a release PR with release-me tag
+    if (labels.includes('release-me')) {
+      // Get the PR number from the commit or by versions
+      let prNumber = await github.getPullRequestFromCommit(context.sha)
+      if (!prNumber) {
+        // Try to find PR by versions if commit lookup fails
+        prNumber = await github.findReleasePRByVersions(manifest)
       }
 
-      // If no PR found (e.g. squashed merge), check if the manifest was updated
-      return await github.wasManifestUpdatedInLastCommit(manifestFile, rootDir)
-    })()
-
-    if (isMergedReleasePR) {
-      core.info('This is a merged release PR, creating the release')
-      // Create the release using versions from the manifest
-      const releaseChanges = await Promise.all(
-        Object.entries(manifest).map(async ([path, newVersion]) => {
-          // Adjust path based on rootDir
-          const packagePath =
-            rootDir === '.' ? path : path.replace(rootDir + '/', '')
-
-          // Get the last release version
-          const currentVersion =
-            (await github.getLastReleaseVersion(packagePath)) || '0.0.0'
-
-          // Get commits since last release
-          const commits = await github.getCommitsSinceLastRelease(
-            packagePath,
-            allCommits
-          )
-          const conventionalCommits = commits.map((message) => ({
-            ...parseConventionalCommit(message),
-            hash: '' // We don't need the hash for version calculation
-          }))
-
-          // Get the changelog
-          const changelog = await github.getChangelogForPackage(packagePath)
-
-          return {
-            path: packagePath,
-            currentVersion,
-            newVersion,
-            commits: conventionalCommits,
-            changelog
-          }
-        })
-      )
-      await github.createRelease(releaseChanges)
-
-      // Try to find the PR to add the released label
-      const latestCommit = allCommits[0]
-      let prNumber: number | null = null
-      if (latestCommit) {
-        // First try to find PR from commit
-        prNumber = await github.getPullRequestFromCommit(latestCommit.sha)
-        // If not found, try to find PR by matching versions
-        if (!prNumber) {
-          prNumber = await github.findReleasePRByVersions(manifest)
-        }
-      }
       if (prNumber) {
+        core.debug(`Creating release and adding label to PR #${prNumber}`)
+        // Create release and add released label
+        await github.createRelease(changes)
         await github.addLabel('released', prNumber)
+        core.setOutput('version', changes[0].newVersion)
+        core.debug('Returning after createRelease and addLabel')
+        return
       }
-
-      // Set outputs
-      const firstPackage = Object.entries(manifest)[0]
-      if (firstPackage) {
-        core.setOutput('version', firstPackage[1])
-        core.setOutput('prerelease', firstPackage[1].includes('-rc.'))
-      }
-    } else {
-      core.info('This is a push to main, creating a release PR')
-      // This is a push to main, create a PR with the changes
-      await github.createReleasePullRequest(packageChanges, 'release-me')
     }
+
+    // Check if manifest was updated in last commit
+    if (await github.wasManifestUpdatedInLastCommit(manifestFile, rootDir)) {
+      core.debug('Creating release for squashed merge')
+      // Create release for squashed merge
+      await github.createRelease(changes)
+      core.setOutput('version', changes[0].newVersion)
+      core.debug('Returning after createRelease for squashed merge')
+      return
+    }
+
+    // For prerelease PRs, create a release PR with the RC version
+    if (isPrerelease) {
+      core.debug('Creating release PR for prerelease PR')
+      await github.createReleasePullRequest(changes, 'release-me')
+      core.debug('Returning after createReleasePullRequest for prerelease PR')
+      return
+    }
+
+    // Create release PR
+    core.debug('Creating release PR (default branch)')
+    await github.createReleasePullRequest(changes, 'release-me')
+    core.debug('Returning after createReleasePullRequest (default branch)')
   } catch (error) {
     if (error instanceof Error) {
       core.setFailed(error.message)

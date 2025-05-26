@@ -5,7 +5,9 @@ import type { Mock } from 'vitest'
 
 vi.mock('@actions/core', () => ({
   info: vi.fn(),
-  debug: vi.fn(),
+  debug: (...args: unknown[]) => {
+    console.log('[core.debug]', ...args)
+  },
   setOutput: vi.fn(),
   setFailed: vi.fn(),
   getInput: vi.fn()
@@ -31,7 +33,9 @@ const githubServiceMock = {
   getLastReleaseVersion: vi.fn(),
   getChangelogForPackage: vi.fn(),
   findReleasePRByVersions: vi.fn(),
-  isDeletedReleaseBranch: vi.fn()
+  isDeletedReleaseBranch: vi.fn(),
+  getLatestRcVersion: vi.fn(),
+  createComment: vi.fn()
 }
 vi.mock('./github.js', () => ({
   GitHubService: vi.fn(() => githubServiceMock)
@@ -88,6 +92,7 @@ describe('main.ts', () => {
       mockCommits
     )
     githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue(mockCommits)
+    githubServiceMock.getLatestRcVersion.mockResolvedValue(1)
     githubServiceMock.createReleasePullRequest.mockResolvedValue(undefined)
     ;(core.getInput as Mock).mockImplementation((name: string) => {
       if (name === 'create-prerelease') return 'true'
@@ -96,9 +101,14 @@ describe('main.ts', () => {
     })
     await run()
     expect(githubServiceMock.createReleasePullRequest).toHaveBeenCalledWith(
-      expect.any(Array),
+      expect.arrayContaining([
+        expect.objectContaining({
+          newVersion: expect.stringMatching(/-rc\.1$/)
+        })
+      ]),
       'release-me'
     )
+    expect(core.setOutput).toHaveBeenCalledWith('prerelease', true)
   })
 
   it('should handle regular releases correctly', async () => {
@@ -151,7 +161,7 @@ describe('main.ts', () => {
         sha: 'abc123'
       }
     ]
-    githubServiceMock.getPullRequestLabels.mockResolvedValue([])
+    githubServiceMock.getPullRequestLabels.mockResolvedValue(['release-me'])
     githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue(
       mockCommits
     )
@@ -200,6 +210,9 @@ describe('main.ts', () => {
     await run()
     expect(core.info).toHaveBeenCalledWith(
       'prereleases are disabled and this is a prerelease PR, skipping'
+    )
+    expect(githubServiceMock.createComment).toHaveBeenCalledWith(
+      expect.stringContaining('⚠️ Prereleases are currently disabled')
     )
   })
 
@@ -278,7 +291,7 @@ describe('main.ts', () => {
         sha: 'abc123'
       }
     ]
-    githubServiceMock.getPullRequestLabels.mockResolvedValue([])
+    githubServiceMock.getPullRequestLabels.mockResolvedValue(['release-me'])
     githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue(
       mockCommits
     )
@@ -287,17 +300,47 @@ describe('main.ts', () => {
     ])
     githubServiceMock.createRelease.mockResolvedValue(undefined)
     githubServiceMock.getPullRequestFromCommit.mockResolvedValue(null) // No PR found from commit
-    githubServiceMock.findReleasePRByVersions.mockResolvedValue(456) // Found PR by versions
+    githubServiceMock.findReleasePRByVersions.mockImplementation(() =>
+      Promise.resolve(456)
+    )
     githubServiceMock.wasReleasePR.mockResolvedValue(true)
     githubServiceMock.getLastReleaseVersion.mockResolvedValue('1.0.0')
     githubServiceMock.getChangelogForPackage.mockResolvedValue(
       '## 1.1.0\n\n- New feature'
     )
     githubServiceMock.addLabel.mockResolvedValue(undefined)
+    githubServiceMock.wasManifestUpdatedInLastCommit.mockResolvedValue(false)
     await run()
     expect(githubServiceMock.createRelease).toHaveBeenCalled()
     expect(githubServiceMock.addLabel).toHaveBeenCalledWith('released', 456)
     expect(core.setOutput).toHaveBeenCalledWith('version', expect.any(String))
     expect(core.setOutput).toHaveBeenCalledWith('prerelease', false)
+  })
+
+  it('should handle prerelease PRs with RC versions', async () => {
+    const mockCommits = ['feat(core): add new feature', 'fix(utils): fix bug']
+    githubServiceMock.getPullRequestLabels.mockResolvedValue(['Prerelease'])
+    githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue(
+      mockCommits
+    )
+    githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue(mockCommits)
+    githubServiceMock.getLatestRcVersion.mockResolvedValue(2)
+    githubServiceMock.createReleasePullRequest.mockResolvedValue(undefined)
+    ;(core.getInput as Mock).mockImplementation((name: string) => {
+      if (name === 'create-prerelease') return 'true'
+      if (name === 'prerelease-label') return 'Prerelease'
+      return ''
+    })
+    githubServiceMock.wasManifestUpdatedInLastCommit.mockResolvedValue(false)
+    await run()
+    expect(githubServiceMock.createReleasePullRequest).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          newVersion: expect.stringMatching(/-rc\.2$/)
+        })
+      ]),
+      'release-me'
+    )
+    expect(core.setOutput).toHaveBeenCalledWith('prerelease', true)
   })
 })
