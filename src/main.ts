@@ -22,6 +22,15 @@ export async function run(): Promise<void> {
     const prereleaseLabel = core.getInput('prerelease-label')
 
     const github = new GitHubService(token)
+    const isDeletedReleaseBranch = await github.isDeletedReleaseBranch()
+
+    if (isDeletedReleaseBranch) {
+      core.info(
+        'Seems we are on an old release-main branch that does not exist anymore, nothing to do'
+      )
+      return
+    }
+
     const labels = await github.getPullRequestLabels()
 
     // Check if this is a release PR

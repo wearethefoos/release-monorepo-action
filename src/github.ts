@@ -32,6 +32,23 @@ export class GitHubService {
     this.releaseContext = this.getReleaseContext()
   }
 
+  public async isDeletedReleaseBranch(): Promise<boolean> {
+    if (this.releaseContext.headRef !== 'release-main') {
+      return false
+    }
+
+    try {
+      await this.octokit.repos.getBranch({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        branch: 'release-main'
+      })
+      return false // Branch exists
+    } catch (error) {
+      return true // Branch does not exist
+    }
+  }
+
   private getReleaseContext(): ReleaseContext {
     const { payload, ref, repo } = context
     const isPullRequest = payload.pull_request !== undefined

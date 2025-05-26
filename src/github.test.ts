@@ -86,6 +86,7 @@ describe('GitHubService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     githubService = new GitHubService('test-token')
+    githubService.isDeletedReleaseBranch = vi.fn().mockResolvedValue(false)
   })
 
   describe('getPullRequestLabels', () => {

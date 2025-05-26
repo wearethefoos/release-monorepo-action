@@ -38634,6 +38634,22 @@ class GitHubService {
         this.octokit = new Octokit({ auth: token });
         this.releaseContext = this.getReleaseContext();
     }
+    async isDeletedReleaseBranch() {
+        if (this.releaseContext.headRef !== 'release-main') {
+            return false;
+        }
+        try {
+            await this.octokit.repos.getBranch({
+                owner: this.releaseContext.owner,
+                repo: this.releaseContext.repo,
+                branch: 'release-main'
+            });
+            return false; // Branch exists
+        }
+        catch (error) {
+            return true; // Branch does not exist
+        }
+    }
     getReleaseContext() {
         const { payload, ref, repo } = githubExports.context;
         const isPullRequest = payload.pull_request !== undefined;
@@ -39397,6 +39413,11 @@ async function run() {
         const createPreRelease = coreExports.getInput('create-prerelease') === 'true';
         const prereleaseLabel = coreExports.getInput('prerelease-label');
         const github = new GitHubService(token);
+        const isDeletedReleaseBranch = await github.isDeletedReleaseBranch();
+        if (isDeletedReleaseBranch) {
+            coreExports.info('Seems we are on an old release-main branch that does not exist anymore, nothing to do');
+            return;
+        }
         const labels = await github.getPullRequestLabels();
         // Check if this is a release PR
         if (labels.includes('released')) {

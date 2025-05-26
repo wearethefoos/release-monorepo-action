@@ -30,7 +30,8 @@ const githubServiceMock = {
   wasManifestUpdatedInLastCommit: vi.fn(),
   getLastReleaseVersion: vi.fn(),
   getChangelogForPackage: vi.fn(),
-  findReleasePRByVersions: vi.fn()
+  findReleasePRByVersions: vi.fn(),
+  isDeletedReleaseBranch: vi.fn()
 }
 vi.mock('./github.js', () => ({
   GitHubService: vi.fn(() => githubServiceMock)
@@ -68,6 +69,7 @@ describe('main.ts', () => {
     })
     // Mock getManifestFromMain
     githubServiceMock.getManifestFromMain.mockResolvedValue(mockManifest)
+    githubServiceMock.isDeletedReleaseBranch.mockResolvedValue(false)
   })
 
   it('should exit early if no changes requiring version updates are found', async () => {
