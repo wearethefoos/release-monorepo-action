@@ -39349,7 +39349,8 @@ async function run() {
                 await github.createComment(`⚠️ Prereleases are currently disabled. To enable prereleases, set the input "create-prerelease" to true in your workflow.`);
             }
             catch (error) {
-                coreExports.warning(`Failed to create PR comment: ${error}`);
+                coreExports.warning(`⚠️ Prereleases are currently disabled. To enable prereleases, set the input "create-prerelease" to true in your workflow.`);
+                coreExports.info(`Failed to create PR comment: ${error}`);
             }
             coreExports.debug('Returning early: prerelease PR but prereleases disabled');
             return;
@@ -39370,6 +39371,9 @@ async function run() {
         }
         // Calculate version changes for each package
         const changes = [];
+        const prereleaseVersionCommentLines = isPrerelease
+            ? ['ℹ️ Created prereleases:', '']
+            : [];
         for (const [packagePath, targetVersions] of Object.entries(manifest)) {
             const commits = await github.getCommitsSinceLastRelease(packagePath, allCommits);
             if (commits.length === 0)
@@ -39399,8 +39403,8 @@ async function run() {
                 newVersion = `${newVersion}-rc.${rcNumber}`;
                 coreExports.info('Skipping creating release PR for prerelease.');
                 coreExports.setOutput('version', newVersion);
-                coreExports.debug('Returning early: prerelease');
-                return;
+                prereleaseVersionCommentLines.push(`- ${newVersion} for ${packagePath}`);
+                continue;
             }
             changes.push({
                 path: packagePath,
@@ -39414,6 +39418,17 @@ async function run() {
         if (changes.length === 0) {
             coreExports.info('No changes requiring version updates found');
             coreExports.debug('Returning early: no version changes for any package');
+            return;
+        }
+        if (isPrerelease) {
+            coreExports.debug('Returning early: prerelease');
+            try {
+                await github.createComment(prereleaseVersionCommentLines.join('\n'));
+            }
+            catch (error) {
+                coreExports.warning(prereleaseVersionCommentLines.join('\n'));
+                coreExports.info(`Failed to create PR comment: ${error}`);
+            }
             return;
         }
         // Check if this is a release PR with release-me tag

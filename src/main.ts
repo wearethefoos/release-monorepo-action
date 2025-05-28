@@ -58,7 +58,10 @@ export async function run(): Promise<void> {
           `⚠️ Prereleases are currently disabled. To enable prereleases, set the input "create-prerelease" to true in your workflow.`
         )
       } catch (error) {
-        core.warning(`Failed to create PR comment: ${error}`)
+        core.warning(
+          `⚠️ Prereleases are currently disabled. To enable prereleases, set the input "create-prerelease" to true in your workflow.`
+        )
+        core.info(`Failed to create PR comment: ${error}`)
       }
       core.debug('Returning early: prerelease PR but prereleases disabled')
       return
@@ -84,6 +87,10 @@ export async function run(): Promise<void> {
 
     // Calculate version changes for each package
     const changes: PackageChanges[] = []
+    const prereleaseVersionCommentLines: string[] = isPrerelease
+      ? ['ℹ️ Created prereleases:', '']
+      : []
+
     for (const [packagePath, targetVersions] of Object.entries(manifest)) {
       const commits = await github.getCommitsSinceLastRelease(
         packagePath,
@@ -119,8 +126,8 @@ export async function run(): Promise<void> {
         newVersion = `${newVersion}-rc.${rcNumber}`
         core.info('Skipping creating release PR for prerelease.')
         core.setOutput('version', newVersion)
-        core.debug('Returning early: prerelease')
-        return
+        prereleaseVersionCommentLines.push(`- ${newVersion} for ${packagePath}`)
+        continue
       }
 
       changes.push({
@@ -136,6 +143,18 @@ export async function run(): Promise<void> {
     if (changes.length === 0) {
       core.info('No changes requiring version updates found')
       core.debug('Returning early: no version changes for any package')
+      return
+    }
+
+    if (isPrerelease) {
+      core.debug('Returning early: prerelease')
+
+      try {
+        await github.createComment(prereleaseVersionCommentLines.join('\n'))
+      } catch (error) {
+        core.warning(prereleaseVersionCommentLines.join('\n'))
+        core.info(`Failed to create PR comment: ${error}`)
+      }
       return
     }
 
