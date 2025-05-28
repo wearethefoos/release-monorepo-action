@@ -53,9 +53,13 @@ export async function run(): Promise<void> {
       core.info(
         'prereleases are disabled and this is a prerelease PR, skipping'
       )
-      await github.createComment(
-        `⚠️ Prereleases are currently disabled. To enable prereleases, set the input "create-prerelease" to true in your workflow.`
-      )
+      try {
+        await github.createComment(
+          `⚠️ Prereleases are currently disabled. To enable prereleases, set the input "create-prerelease" to true in your workflow.`
+        )
+      } catch (error) {
+        core.warning(`Failed to create PR comment: ${error}`)
+      }
       core.debug('Returning early: prerelease PR but prereleases disabled')
       return
     }

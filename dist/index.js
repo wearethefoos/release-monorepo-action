@@ -39345,7 +39345,12 @@ async function run() {
         const isPrerelease = labels.includes(prereleaseLabel);
         if (isPrerelease && !createPreRelease) {
             coreExports.info('prereleases are disabled and this is a prerelease PR, skipping');
-            await github.createComment(`⚠️ Prereleases are currently disabled. To enable prereleases, set the input "create-prerelease" to true in your workflow.`);
+            try {
+                await github.createComment(`⚠️ Prereleases are currently disabled. To enable prereleases, set the input "create-prerelease" to true in your workflow.`);
+            }
+            catch (error) {
+                coreExports.warning(`Failed to create PR comment: ${error}`);
+            }
             coreExports.debug('Returning early: prerelease PR but prereleases disabled');
             return;
         }
