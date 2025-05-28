@@ -20,7 +20,8 @@ export default {
         'test',
         'chore-docs'
       ]
-    ]
+    ],
+    'body-max-line-length': [2, 'always', 250]
   },
   extends: ['@commitlint/config-conventional']
 }
