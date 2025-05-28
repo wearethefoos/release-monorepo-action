@@ -169,6 +169,7 @@ export async function run(): Promise<void> {
         core.warning(prereleaseVersionCommentLines.join('\n'))
         core.info(`Failed to create PR comment: ${error}`)
       }
+      await github.createRelease(changes)
       core.debug('Returning early: prerelease')
       return
     }

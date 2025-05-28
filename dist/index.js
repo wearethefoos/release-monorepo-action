@@ -39438,6 +39438,7 @@ async function run() {
                 coreExports.warning(prereleaseVersionCommentLines.join('\n'));
                 coreExports.info(`Failed to create PR comment: ${error}`);
             }
+            await github.createRelease(changes);
             coreExports.debug('Returning early: prerelease');
             return;
         }
