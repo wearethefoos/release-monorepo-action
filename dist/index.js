@@ -38611,15 +38611,15 @@ class GitHubService {
         this.octokit = new Octokit({ auth: token });
         this.releaseContext = this.getReleaseContext();
     }
-    async isDeletedReleaseBranch() {
-        if (this.releaseContext.headRef !== 'release-main') {
+    async isDeletedReleaseBranch(target) {
+        if (this.releaseContext.headRef !== `release-${target}`) {
             return false;
         }
         try {
             await this.octokit.repos.getBranch({
                 owner: this.releaseContext.owner,
                 repo: this.releaseContext.repo,
-                branch: 'release-main'
+                branch: `release-${target}`
             });
             return false; // Branch exists
         }
@@ -38700,301 +38700,170 @@ class GitHubService {
     }
     async createReleasePullRequest(changes, label = 'release-me', manifestFile = '.release-manifest.json') {
         // Determine PR title and commit message
-        const title = this.generateReleasePRTitle(changes);
-        const commitMessage = title;
+        const title = changes.length === 1
+            ? `chore: release ${changes[0].path}@${changes[0].newVersion}`
+            : 'chore: release multiple packages';
+        const commitMessage = changes.length === 1
+            ? `chore: release ${changes[0].path}@${changes[0].newVersion}`
+            : 'chore: release multiple packages';
+        // Create a new branch with the format 'release-<target>'
+        const branchName = `release-${changes[0].releaseTarget}`;
+        // Create the branch from main
+        try {
+            await this.octokit.git.createRef({
+                owner: this.releaseContext.owner,
+                repo: this.releaseContext.repo,
+                ref: `refs/heads/${branchName}`,
+                sha: await this.getMainSha()
+            });
+        }
+        catch (error) {
+            if (error instanceof Error &&
+                error.message.includes('Reference already exists')) {
+                coreExports.info('Branch already exists, skipping creation');
+            }
+            else {
+                throw error;
+            }
+        }
+        // Update package versions and changelogs locally
+        const treeItems = [];
+        for (const change of changes) {
+            await this.updatePackageVersion(change.path, change.newVersion);
+            // Add the updated package.json to the tree
+            const packageJsonPath = path__namespace.join(change.path, 'package.json');
+            if (fs__namespace.existsSync(packageJsonPath)) {
+                const content = fs__namespace.readFileSync(packageJsonPath, 'utf-8');
+                const { data: blob } = await this.octokit.git.createBlob({
+                    owner: this.releaseContext.owner,
+                    repo: this.releaseContext.repo,
+                    content,
+                    encoding: 'utf-8'
+                });
+                treeItems.push({
+                    path: packageJsonPath,
+                    mode: '100644',
+                    type: 'blob',
+                    sha: blob.sha
+                });
+            }
+            // Add/update the changelog
+            const changelogPath = path__namespace.join(change.path, 'CHANGELOG.md');
+            let changelogContent = '';
+            if (fs__namespace.existsSync(changelogPath)) {
+                changelogContent = fs__namespace.readFileSync(changelogPath, 'utf-8');
+            }
+            // Ensure the changelog starts with a level 1 heading
+            const packageName = change.path === '.' ? 'Changelog' : `${change.path} Changelog`;
+            if (!changelogContent.startsWith('# ')) {
+                changelogContent = `# ${packageName}\n\n${changelogContent}`;
+            }
+            // Add the new version section after the level 1 heading
+            const newVersionSection = `## ${change.newVersion} (${new Date().toISOString().split('T')[0]})\n\n${change.changelog}\n`;
+            const lines = changelogContent.split('\n');
+            const headingIndex = lines.findIndex((line) => line.startsWith('# '));
+            if (headingIndex !== -1) {
+                lines.splice(headingIndex + 2, 0, newVersionSection);
+                changelogContent = lines.join('\n');
+            }
+            else {
+                changelogContent = newVersionSection + changelogContent;
+            }
+            // Create blob for the changelog
+            const { data: changelogBlob } = await this.octokit.git.createBlob({
+                owner: this.releaseContext.owner,
+                repo: this.releaseContext.repo,
+                content: changelogContent.trimEnd() + '\n',
+                encoding: 'utf-8'
+            });
+            treeItems.push({
+                path: changelogPath,
+                mode: '100644',
+                type: 'blob',
+                sha: changelogBlob.sha
+            });
+        }
+        // Update the release manifest
+        const manifestPath = manifestFile;
+        let manifestContent = '{}';
+        if (fs__namespace.existsSync(manifestPath)) {
+            manifestContent = fs__namespace.readFileSync(manifestPath, 'utf-8');
+        }
+        const manifest = JSON.parse(manifestContent);
+        await this.updateManifest(manifest, changes, changes[0].releaseTarget);
+        const updatedManifestContent = JSON.stringify(manifest, null, 2) + '\n';
+        const { data: manifestBlob } = await this.octokit.git.createBlob({
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo,
+            content: updatedManifestContent,
+            encoding: 'utf-8'
+        });
+        treeItems.push({
+            path: manifestPath,
+            mode: '100644',
+            type: 'blob',
+            sha: manifestBlob.sha
+        });
+        // Create a tree with the updated files
+        const { data: tree } = await this.octokit.git.createTree({
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo,
+            base_tree: (await this.octokit.git.getRef({
+                owner: this.releaseContext.owner,
+                repo: this.releaseContext.repo,
+                ref: `heads/${branchName}`
+            })).data.object.sha,
+            tree: treeItems
+        });
+        // Create a commit with the tree
+        const { data: commit } = await this.octokit.git.createCommit({
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo,
+            message: commitMessage,
+            tree: tree.sha,
+            parents: [
+                (await this.octokit.git.getRef({
+                    owner: this.releaseContext.owner,
+                    repo: this.releaseContext.repo,
+                    ref: `heads/${branchName}`
+                })).data.object.sha
+            ]
+        });
+        // Update the branch reference
+        await this.octokit.git.updateRef({
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo,
+            ref: `heads/${branchName}`,
+            sha: commit.sha
+        });
+        // Create or update the PR
+        const { data: existingPRs } = await this.octokit.pulls.list({
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo,
+            state: 'open',
+            head: `${this.releaseContext.owner}:${branchName}`
+        });
         const body = this.generatePullRequestBody(changes);
-        if (this.releaseContext.isPullRequest &&
-            this.releaseContext.pullRequestNumber) {
+        if (existingPRs.length > 0) {
             // Update existing PR
             await this.octokit.pulls.update({
                 owner: this.releaseContext.owner,
                 repo: this.releaseContext.repo,
-                pull_number: this.releaseContext.pullRequestNumber,
+                pull_number: existingPRs[0].number,
                 title,
                 body
             });
-            await this.octokit.issues.addLabels({
-                owner: this.releaseContext.owner,
-                repo: this.releaseContext.repo,
-                issue_number: this.releaseContext.pullRequestNumber,
-                labels: [label]
-            });
         }
         else {
-            // Check for existing release PRs
-            const { data: existingPRs } = await this.octokit.pulls.list({
-                owner: this.releaseContext.owner,
-                repo: this.releaseContext.repo,
-                state: 'open',
-                labels: [label]
-            });
-            if (existingPRs.length > 0) {
-                coreExports.info(`Updating existing release PR ${existingPRs[0].number}`);
-                // Update the most recent release PR
-                const existingPR = existingPRs[0];
-                // Get the branch name from the PR
-                const branchName = existingPR.head.ref;
-                // Get the main branch SHA to base our new commit on
-                const mainSha = await this.getMainSha();
-                // Update package versions and changelogs locally
-                const treeItems = [];
-                for (const change of changes) {
-                    await this.updatePackageVersion(change.path, change.newVersion);
-                    // Add the updated package.json to the tree
-                    const packageJsonPath = path__namespace.join(change.path, 'package.json');
-                    if (fs__namespace.existsSync(packageJsonPath)) {
-                        const content = fs__namespace.readFileSync(packageJsonPath, 'utf-8');
-                        const { data: blob } = await this.octokit.git.createBlob({
-                            owner: this.releaseContext.owner,
-                            repo: this.releaseContext.repo,
-                            content,
-                            encoding: 'utf-8'
-                        });
-                        treeItems.push({
-                            path: packageJsonPath,
-                            mode: '100644',
-                            type: 'blob',
-                            sha: blob.sha
-                        });
-                    }
-                    // Add/update the changelog
-                    const changelogPath = path__namespace.join(change.path, 'CHANGELOG.md');
-                    let changelogContent = '';
-                    if (fs__namespace.existsSync(changelogPath)) {
-                        changelogContent = fs__namespace.readFileSync(changelogPath, 'utf-8');
-                    }
-                    // Ensure the changelog starts with a level 1 heading
-                    const packageName = change.path === '.' ? 'Changelog' : `${change.path} Changelog`;
-                    if (!changelogContent.startsWith('# ')) {
-                        changelogContent = `# ${packageName}\n\n${changelogContent}`;
-                    }
-                    // Add the new version section after the level 1 heading
-                    const newVersionSection = `## ${change.newVersion} (${new Date().toISOString().split('T')[0]})\n\n${change.changelog}\n`;
-                    const lines = changelogContent.split('\n');
-                    const headingIndex = lines.findIndex((line) => line.startsWith('# '));
-                    if (headingIndex !== -1) {
-                        lines.splice(headingIndex + 2, 0, newVersionSection);
-                        changelogContent = lines.join('\n');
-                    }
-                    else {
-                        changelogContent = newVersionSection + changelogContent;
-                    }
-                    // Create blob for the changelog
-                    const { data: changelogBlob } = await this.octokit.git.createBlob({
-                        owner: this.releaseContext.owner,
-                        repo: this.releaseContext.repo,
-                        content: changelogContent.trimEnd() + '\n',
-                        encoding: 'utf-8'
-                    });
-                    treeItems.push({
-                        path: changelogPath,
-                        mode: '100644',
-                        type: 'blob',
-                        sha: changelogBlob.sha
-                    });
-                }
-                // Update the release manifest
-                const manifestPath = manifestFile;
-                let manifestContent = '{}';
-                if (fs__namespace.existsSync(manifestPath)) {
-                    manifestContent = fs__namespace.readFileSync(manifestPath, 'utf-8');
-                }
-                const manifest = JSON.parse(manifestContent);
-                for (const change of changes) {
-                    manifest[change.path] = change.newVersion;
-                }
-                const updatedManifestContent = JSON.stringify(manifest, null, 2) + '\n';
-                const { data: manifestBlob } = await this.octokit.git.createBlob({
-                    owner: this.releaseContext.owner,
-                    repo: this.releaseContext.repo,
-                    content: updatedManifestContent,
-                    encoding: 'utf-8'
-                });
-                treeItems.push({
-                    path: manifestPath,
-                    mode: '100644',
-                    type: 'blob',
-                    sha: manifestBlob.sha
-                });
-                // Create a tree with the updated files
-                const { data: tree } = await this.octokit.git.createTree({
-                    owner: this.releaseContext.owner,
-                    repo: this.releaseContext.repo,
-                    base_tree: mainSha,
-                    tree: treeItems
-                });
-                // Create a commit with the tree, based on main
-                const { data: commit } = await this.octokit.git.createCommit({
-                    owner: this.releaseContext.owner,
-                    repo: this.releaseContext.repo,
-                    message: commitMessage,
-                    tree: tree.sha,
-                    parents: [mainSha]
-                });
-                // Update the branch reference to point to the new commit, replacing all history
-                await this.octokit.git.updateRef({
-                    owner: this.releaseContext.owner,
-                    repo: this.releaseContext.repo,
-                    ref: `heads/${branchName}`,
-                    sha: commit.sha,
-                    force: true // Force update to replace existing commits
-                });
-                // Update the PR
-                await this.octokit.pulls.update({
-                    owner: this.releaseContext.owner,
-                    repo: this.releaseContext.repo,
-                    pull_number: existingPR.number,
-                    title,
-                    body
-                });
-                return;
-            }
-            // Create a new branch with the format 'release-main'
-            const branchName = `release-main`;
-            // Create the branch from main
-            try {
-                await this.octokit.git.createRef({
-                    owner: this.releaseContext.owner,
-                    repo: this.releaseContext.repo,
-                    ref: `refs/heads/${branchName}`,
-                    sha: await this.getMainSha()
-                });
-            }
-            catch (error) {
-                if (error instanceof Error &&
-                    error.message.includes('Reference already exists')) {
-                    coreExports.info('Branch already exists, skipping creation');
-                }
-                else {
-                    throw error;
-                }
-            }
-            // Update package versions and changelogs locally
-            const treeItems = [];
-            for (const change of changes) {
-                await this.updatePackageVersion(change.path, change.newVersion);
-                // Add the updated package.json to the tree
-                const packageJsonPath = path__namespace.join(change.path, 'package.json');
-                if (fs__namespace.existsSync(packageJsonPath)) {
-                    const content = fs__namespace.readFileSync(packageJsonPath, 'utf-8');
-                    const { data: blob } = await this.octokit.git.createBlob({
-                        owner: this.releaseContext.owner,
-                        repo: this.releaseContext.repo,
-                        content,
-                        encoding: 'utf-8'
-                    });
-                    treeItems.push({
-                        path: packageJsonPath,
-                        mode: '100644',
-                        type: 'blob',
-                        sha: blob.sha
-                    });
-                }
-                // Add/update the changelog
-                const changelogPath = path__namespace.join(change.path, 'CHANGELOG.md');
-                let changelogContent = '';
-                if (fs__namespace.existsSync(changelogPath)) {
-                    changelogContent = fs__namespace.readFileSync(changelogPath, 'utf-8');
-                }
-                // Ensure the changelog starts with a level 1 heading
-                const packageName = change.path === '.' ? 'Changelog' : `${change.path} Changelog`;
-                if (!changelogContent.startsWith('# ')) {
-                    changelogContent = `# ${packageName}\n\n${changelogContent}`;
-                }
-                // Add the new version section after the level 1 heading
-                const newVersionSection = `## ${change.newVersion} (${new Date().toISOString().split('T')[0]})\n\n${change.changelog}\n`;
-                const lines = changelogContent.split('\n');
-                const headingIndex = lines.findIndex((line) => line.startsWith('# '));
-                if (headingIndex !== -1) {
-                    lines.splice(headingIndex + 2, 0, newVersionSection);
-                    changelogContent = lines.join('\n');
-                }
-                else {
-                    changelogContent = newVersionSection + changelogContent;
-                }
-                // Create blob for the changelog
-                const { data: changelogBlob } = await this.octokit.git.createBlob({
-                    owner: this.releaseContext.owner,
-                    repo: this.releaseContext.repo,
-                    content: changelogContent.trimEnd() + '\n',
-                    encoding: 'utf-8'
-                });
-                treeItems.push({
-                    path: changelogPath,
-                    mode: '100644',
-                    type: 'blob',
-                    sha: changelogBlob.sha
-                });
-            }
-            // Update the release manifest
-            const manifestPath = manifestFile;
-            let manifestContent = '{}';
-            if (fs__namespace.existsSync(manifestPath)) {
-                manifestContent = fs__namespace.readFileSync(manifestPath, 'utf-8');
-            }
-            const manifest = JSON.parse(manifestContent);
-            for (const change of changes) {
-                manifest[change.path] = change.newVersion;
-            }
-            const updatedManifestContent = JSON.stringify(manifest, null, 2) + '\n';
-            const { data: manifestBlob } = await this.octokit.git.createBlob({
-                owner: this.releaseContext.owner,
-                repo: this.releaseContext.repo,
-                content: updatedManifestContent,
-                encoding: 'utf-8'
-            });
-            treeItems.push({
-                path: manifestPath,
-                mode: '100644',
-                type: 'blob',
-                sha: manifestBlob.sha
-            });
-            // Create a tree with the updated files
-            const { data: tree } = await this.octokit.git.createTree({
-                owner: this.releaseContext.owner,
-                repo: this.releaseContext.repo,
-                base_tree: (await this.octokit.git.getRef({
-                    owner: this.releaseContext.owner,
-                    repo: this.releaseContext.repo,
-                    ref: `heads/${branchName}`
-                })).data.object.sha,
-                tree: treeItems
-            });
-            // Create a commit with the tree
-            const { data: commit } = await this.octokit.git.createCommit({
-                owner: this.releaseContext.owner,
-                repo: this.releaseContext.repo,
-                message: commitMessage,
-                tree: tree.sha,
-                parents: [
-                    (await this.octokit.git.getRef({
-                        owner: this.releaseContext.owner,
-                        repo: this.releaseContext.repo,
-                        ref: `heads/${branchName}`
-                    })).data.object.sha
-                ]
-            });
-            // Update the branch reference to point to the new commit
-            await this.octokit.git.updateRef({
-                owner: this.releaseContext.owner,
-                repo: this.releaseContext.repo,
-                ref: `heads/${branchName}`,
-                sha: commit.sha
-            });
-            // Create the PR from the new branch
-            const { data: pr } = await this.octokit.pulls.create({
+            // Create new PR
+            await this.octokit.pulls.create({
                 owner: this.releaseContext.owner,
                 repo: this.releaseContext.repo,
                 title,
+                labels: [label],
                 body,
                 head: branchName,
                 base: 'main'
-            });
-            await this.octokit.issues.addLabels({
-                owner: this.releaseContext.owner,
-                repo: this.releaseContext.repo,
-                issue_number: pr.number,
-                labels: [label]
             });
         }
     }
@@ -39255,7 +39124,21 @@ class GitHubService {
                 throw new Error(`Manifest file ${manifestFile} not found in main branch`);
             }
             const content = Buffer.from(data.content, 'base64').toString('utf-8');
-            return JSON.parse(content);
+            const manifest = JSON.parse(content);
+            // Convert old manifest format to new format if needed
+            const newManifest = {};
+            for (const [packagePath, version] of Object.entries(manifest)) {
+                if (typeof version === 'string') {
+                    newManifest[packagePath] = {
+                        latest: version,
+                        main: version
+                    };
+                }
+                else {
+                    newManifest[packagePath] = version;
+                }
+            }
+            return newManifest;
         }
         catch (error) {
             coreExports.warning(`Failed to get manifest from main: ${error}`);
@@ -39360,9 +39243,10 @@ class GitHubService {
             const changes = Object.entries(manifest).map(([path, newVersion]) => ({
                 path,
                 currentVersion: '', // We don't need this for title matching
-                newVersion,
+                newVersion: newVersion.latest,
                 commits: [], // We don't need this for title matching
-                changelog: '' // We don't need this for title matching
+                changelog: '', // We don't need this for title matching
+                releaseTarget: 'main'
             }));
             // Generate the expected title
             const expectedTitle = this.generateReleasePRTitle(changes);
@@ -39411,6 +39295,20 @@ class GitHubService {
             return 1;
         }
     }
+    async updateManifest(manifest, changes, releaseTarget) {
+        for (const change of changes) {
+            if (!manifest[change.path]) {
+                manifest[change.path] = {
+                    latest: change.newVersion,
+                    [releaseTarget]: change.newVersion
+                };
+            }
+            else {
+                manifest[change.path].latest = change.newVersion;
+                manifest[change.path][releaseTarget] = change.newVersion;
+            }
+        }
+    }
 }
 
 /**
@@ -39425,10 +39323,14 @@ async function run() {
         const manifestFile = coreExports.getInput('manifest-file', { required: true });
         const createPreRelease = coreExports.getInput('create-prerelease') === 'true';
         const prereleaseLabel = coreExports.getInput('prerelease-label');
+        const releaseTarget = coreExports.getInput('release-target');
+        if (releaseTarget === 'latest') {
+            throw new Error('release-target cannot be "latest"');
+        }
         const github = new GitHubService(token);
-        const isDeletedReleaseBranch = await github.isDeletedReleaseBranch();
+        const isDeletedReleaseBranch = await github.isDeletedReleaseBranch(releaseTarget);
         if (isDeletedReleaseBranch) {
-            coreExports.info('Seems we are on an old release-main branch that does not exist anymore, nothing to do');
+            coreExports.info('Seems we are on an old release branch that does not exist anymore, nothing to do');
             coreExports.debug('Returning early: isDeletedReleaseBranch');
             return;
         }
@@ -39463,7 +39365,7 @@ async function run() {
         }
         // Calculate version changes for each package
         const changes = [];
-        for (const [packagePath, currentVersion] of Object.entries(manifest)) {
+        for (const [packagePath, targetVersions] of Object.entries(manifest)) {
             const commits = await github.getCommitsSinceLastRelease(packagePath, allCommits);
             if (commits.length === 0)
                 continue;
@@ -39471,6 +39373,7 @@ async function run() {
             const versionBump = determineVersionBump(parsedCommits);
             if (!versionBump)
                 continue;
+            const currentVersion = targetVersions.latest;
             let newVersion = currentVersion;
             if (versionBump === 'major') {
                 newVersion = `${parseInt(currentVersion.split('.')[0]) + 1}.0.0`;
@@ -39483,17 +39386,24 @@ async function run() {
                 const [major, minor, patch] = currentVersion.split('.');
                 newVersion = `${major}.${minor}.${parseInt(patch) + 1}`;
             }
+            // Set prerelease flag in output
+            coreExports.setOutput('prerelease', isPrerelease);
             // If this is a prerelease, append rc.<number>
             if (isPrerelease) {
                 const rcNumber = await github.getLatestRcVersion(packagePath, newVersion);
                 newVersion = `${newVersion}-rc.${rcNumber}`;
+                coreExports.info('Skipping creating release PR for prerelease.');
+                coreExports.setOutput('version', newVersion);
+                coreExports.debug('Returning early: prerelease');
+                return;
             }
             changes.push({
                 path: packagePath,
                 currentVersion,
                 newVersion,
                 commits: parsedCommits,
-                changelog: generateChangelog(parsedCommits)
+                changelog: generateChangelog(parsedCommits),
+                releaseTarget
             });
         }
         if (changes.length === 0) {
@@ -39501,8 +39411,6 @@ async function run() {
             coreExports.debug('Returning early: no version changes for any package');
             return;
         }
-        // Set prerelease flag in output
-        coreExports.setOutput('prerelease', isPrerelease);
         // Check if this is a release PR with release-me tag
         if (labels.includes('release-me')) {
             // Get the PR number from the commit or by versions
@@ -39528,13 +39436,6 @@ async function run() {
             await github.createRelease(changes);
             coreExports.setOutput('version', changes[0].newVersion);
             coreExports.debug('Returning after createRelease for squashed merge');
-            return;
-        }
-        // For prerelease PRs, create a release PR with the RC version
-        if (isPrerelease) {
-            coreExports.debug('Creating release PR for prerelease PR');
-            await github.createReleasePullRequest(changes, 'release-me');
-            coreExports.debug('Returning after createReleasePullRequest for prerelease PR');
             return;
         }
         // Create release PR

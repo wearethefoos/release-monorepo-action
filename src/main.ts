@@ -1,11 +1,7 @@
 import * as core from '@actions/core'
 import { context } from '@actions/github'
 import { GitHubService } from './github.js'
-import {
-  PackageChanges,
-  PackageManifest,
-  PackageTargetVersions
-} from './types.js'
+import { PackageChanges } from './types.js'
 import {
   parseConventionalCommit,
   determineVersionBump,
@@ -107,6 +103,9 @@ export async function run(): Promise<void> {
         newVersion = `${major}.${minor}.${parseInt(patch) + 1}`
       }
 
+      // Set prerelease flag in output
+      core.setOutput('prerelease', isPrerelease)
+
       // If this is a prerelease, append rc.<number>
       if (isPrerelease) {
         const rcNumber = await github.getLatestRcVersion(
@@ -114,6 +113,10 @@ export async function run(): Promise<void> {
           newVersion
         )
         newVersion = `${newVersion}-rc.${rcNumber}`
+        core.info('Skipping creating release PR for prerelease.')
+        core.setOutput('version', newVersion)
+        core.debug('Returning early: prerelease')
+        return
       }
 
       changes.push({
@@ -131,9 +134,6 @@ export async function run(): Promise<void> {
       core.debug('Returning early: no version changes for any package')
       return
     }
-
-    // Set prerelease flag in output
-    core.setOutput('prerelease', isPrerelease)
 
     // Check if this is a release PR with release-me tag
     if (labels.includes('release-me')) {
@@ -162,14 +162,6 @@ export async function run(): Promise<void> {
       await github.createRelease(changes)
       core.setOutput('version', changes[0].newVersion)
       core.debug('Returning after createRelease for squashed merge')
-      return
-    }
-
-    // For prerelease PRs, create a release PR with the RC version
-    if (isPrerelease) {
-      core.debug('Creating release PR for prerelease PR')
-      await github.createReleasePullRequest(changes, 'release-me')
-      core.debug('Returning after createReleasePullRequest for prerelease PR')
       return
     }
 

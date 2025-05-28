@@ -111,15 +111,7 @@ describe('main.ts', () => {
       return ''
     })
     await run()
-    expect(githubServiceMock.createReleasePullRequest).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({
-          newVersion: expect.stringMatching(/-rc\.1$/),
-          releaseTarget: 'canary'
-        })
-      ]),
-      'release-me'
-    )
+    expect(githubServiceMock.createReleasePullRequest).not.toHaveBeenCalled()
     expect(core.setOutput).toHaveBeenCalledWith('prerelease', true)
   })
 
@@ -384,15 +376,7 @@ describe('main.ts', () => {
     })
     githubServiceMock.wasManifestUpdatedInLastCommit.mockResolvedValue(false)
     await run()
-    expect(githubServiceMock.createReleasePullRequest).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({
-          newVersion: expect.stringMatching(/-rc\.2$/),
-          releaseTarget: 'canary'
-        })
-      ]),
-      'release-me'
-    )
+    expect(githubServiceMock.createReleasePullRequest).not.toHaveBeenCalled()
     expect(core.setOutput).toHaveBeenCalledWith('prerelease', true)
   })
 

@@ -780,7 +780,7 @@ export class GitHubService {
   }
 
   async findReleasePRByVersions(
-    manifest: Record<string, string>
+    manifest: PackageManifest
   ): Promise<number | null> {
     try {
       // Get all closed PRs with release-me label
@@ -795,14 +795,16 @@ export class GitHubService {
       })
 
       // Convert manifest to PackageChanges format
-      const changes = Object.entries(manifest).map(([path, newVersion]) => ({
-        path,
-        currentVersion: '', // We don't need this for title matching
-        newVersion,
-        commits: [], // We don't need this for title matching
-        changelog: '', // We don't need this for title matching
-        releaseTarget: 'main'
-      }))
+      const changes: PackageChanges[] = Object.entries(manifest).map(
+        ([path, newVersion]) => ({
+          path,
+          currentVersion: '', // We don't need this for title matching
+          newVersion: newVersion.latest,
+          commits: [], // We don't need this for title matching
+          changelog: '', // We don't need this for title matching
+          releaseTarget: 'main'
+        })
+      )
 
       // Generate the expected title
       const expectedTitle = this.generateReleasePRTitle(changes)

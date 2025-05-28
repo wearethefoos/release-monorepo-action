@@ -1732,7 +1732,7 @@ describe('GitHubService', () => {
           }
         ]
       })
-      const manifest = { 'packages/core': '1.2.3' }
+      const manifest = { 'packages/core': { latest: '1.2.3', main: '1.2.3' } }
       const prNumber = await githubService.findReleasePRByVersions(manifest)
       expect(prNumber).toBe(42)
     })
@@ -1747,7 +1747,7 @@ describe('GitHubService', () => {
           }
         ]
       })
-      const manifest = { 'packages/core': '1.2.3' }
+      const manifest = { 'packages/core': { latest: '1.2.3', main: '1.2.3' } }
       const prNumber = await githubService.findReleasePRByVersions(manifest)
       expect(prNumber).toBeNull()
     })
