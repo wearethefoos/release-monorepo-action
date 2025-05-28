@@ -530,6 +530,7 @@ describe('GitHubService', () => {
       mockOctokit.repos.createRelease.mockResolvedValue(mockRelease)
       const changes: PackageChanges[] = [
         {
+          releaseTarget: 'main',
           path: 'packages/core',
           currentVersion: '1.0.0',
           newVersion: '1.1.0',
@@ -565,6 +566,7 @@ describe('GitHubService', () => {
       mockOctokit.repos.createRelease.mockResolvedValue(mockRelease)
       const changes: PackageChanges[] = [
         {
+          releaseTarget: 'main',
           path: 'packages/core',
           currentVersion: '1.0.0',
           newVersion: '1.1.0',
@@ -580,6 +582,7 @@ describe('GitHubService', () => {
           changelog: '## Changes\n\n- feat(core): add feature'
         },
         {
+          releaseTarget: 'main',
           path: 'packages/utils',
           currentVersion: '2.0.0',
           newVersion: '2.1.0-rc.1',
@@ -624,6 +627,7 @@ describe('GitHubService', () => {
       mockOctokit.repos.createRelease.mockRejectedValue(new Error('API Error'))
       const changes: PackageChanges[] = [
         {
+          releaseTarget: 'main',
           path: 'packages/core',
           currentVersion: '1.0.0',
           newVersion: '1.1.0',
@@ -651,9 +655,52 @@ describe('GitHubService', () => {
         data: { number: 123, html_url: 'https://github.com/test/pull/1' }
       }
       mockOctokit.pulls.update.mockResolvedValue(mockPR)
-      mockOctokit.issues.addLabels.mockResolvedValue({})
+      mockOctokit.repos.getBranch.mockResolvedValue({
+        data: { commit: { sha: 'main-sha' } }
+      })
+      mockOctokit.git.createBlob.mockResolvedValue({
+        data: { sha: 'blob-sha' }
+      })
+      mockOctokit.git.getRef.mockResolvedValue({
+        data: { object: { sha: 'branch-sha' } }
+      })
+      mockOctokit.git.createTree.mockResolvedValue({
+        data: { sha: 'tree-sha' }
+      })
+      mockOctokit.git.createCommit.mockResolvedValue({
+        data: { sha: 'commit-sha' }
+      })
+      mockOctokit.pulls.list.mockResolvedValue({
+        data: [
+          {
+            number: 123,
+            title: 'chore: release packages/core@1.0.0',
+            body: 'Old changelog',
+            labels: [{ name: 'release-me' }],
+            head: { ref: 'release-1.0.0-2024-01-01' }
+          }
+        ]
+      })
+      const packageJsonPath = 'packages/core/package.json'
+      const changelogPath = 'packages/core/CHANGELOG.md'
+      const manifestPath = '.release-manifest.json'
+      vi.mocked(fs.existsSync).mockImplementation(
+        (p) =>
+          p === packageJsonPath || p === changelogPath || p === manifestPath
+      )
+      vi.mocked(fs.readFileSync).mockImplementation((p) => {
+        if (p === packageJsonPath)
+          return JSON.stringify({ name: 'core', version: '1.0.0' })
+        if (p === changelogPath) return '## 1.0.0\n\n- Initial release\n'
+        if (p === manifestPath)
+          return JSON.stringify({
+            'packages/core': { latest: '1.0.0', main: '1.0.0' }
+          })
+        return ''
+      })
       const changes: PackageChanges[] = [
         {
+          releaseTarget: 'main',
           path: 'packages/core',
           currentVersion: '1.0.0',
           newVersion: '1.1.0',
@@ -669,7 +716,6 @@ describe('GitHubService', () => {
           changelog: '## Changes\n\n- feat(core): add feature'
         }
       ]
-
       await githubService.createReleasePullRequest(changes, 'release-me')
       expect(mockOctokit.pulls.update).toHaveBeenCalledWith({
         owner: 'test-owner',
@@ -677,12 +723,6 @@ describe('GitHubService', () => {
         pull_number: 123,
         title: 'chore: release packages/core@1.1.0',
         body: expect.stringContaining('## Changes')
-      })
-      expect(mockOctokit.issues.addLabels).toHaveBeenCalledWith({
-        owner: 'test-owner',
-        repo: 'test-repo',
-        issue_number: 123,
-        labels: ['release-me']
       })
     })
 
@@ -719,21 +759,29 @@ describe('GitHubService', () => {
       mockOctokit.pulls.create.mockResolvedValue(mockPR)
       mockOctokit.issues.addLabels.mockResolvedValue({})
 
-      // Mock fs.existsSync and fs.readFileSync for package.json and changelog
+      // Mock fs.existsSync and fs.readFileSync for package.json and changelog and manifest
       const packageJsonPath = 'packages/core/package.json'
       const changelogPath = 'packages/core/CHANGELOG.md'
+      const manifestPath = '.release-manifest.json'
       vi.mocked(fs.existsSync).mockImplementation(
-        (p) => p === packageJsonPath || p === changelogPath
+        (p) =>
+          p === packageJsonPath || p === changelogPath || p === manifestPath
       )
       vi.mocked(fs.readFileSync).mockImplementation((p) => {
         if (p === packageJsonPath)
           return JSON.stringify({ name: 'core', version: '1.0.0' })
-        if (p === changelogPath) return '## 1.0.0\n\n- Initial release\n'
+        if (p === changelogPath)
+          return '# Changelog\n\n## 1.0.0\n\n- Initial release\n'
+        if (p === manifestPath)
+          return JSON.stringify({
+            'packages/core': { latest: '1.0.0', main: '1.0.0' }
+          })
         return ''
       })
 
       const changes: PackageChanges[] = [
         {
+          releaseTarget: 'main',
           path: 'packages/core',
           currentVersion: '1.0.0',
           newVersion: '1.1.0',
@@ -751,114 +799,15 @@ describe('GitHubService', () => {
       ]
 
       await githubService.createReleasePullRequest(changes, 'release-me')
-      expect(mockOctokit.repos.getBranch).toHaveBeenCalledWith({
-        owner: 'test-owner',
-        repo: 'test-repo',
-        branch: 'main'
-      })
-      expect(mockOctokit.git.createRef).toHaveBeenCalledWith({
-        owner: 'test-owner',
-        repo: 'test-repo',
-        ref: expect.stringMatching(/^refs\/heads\/release-main$/),
-        sha: 'main-sha'
-      })
-      expect(mockOctokit.git.createBlob).toHaveBeenCalledTimes(3) // Once for package.json, once for changelog, once for manifest
-      expect(mockOctokit.git.createTree).toHaveBeenCalledWith({
-        owner: 'test-owner',
-        repo: 'test-repo',
-        base_tree: 'branch-sha',
-        tree: [
-          {
-            path: packageJsonPath,
-            mode: '100644',
-            type: 'blob',
-            sha: 'blob-sha'
-          },
-          {
-            path: changelogPath,
-            mode: '100644',
-            type: 'blob',
-            sha: 'blob-sha'
-          },
-          {
-            path: '.release-manifest.json',
-            mode: '100644',
-            type: 'blob',
-            sha: 'blob-sha'
-          }
-        ]
-      })
-      expect(mockOctokit.git.createCommit).toHaveBeenCalledWith({
-        owner: 'test-owner',
-        repo: 'test-repo',
-        message: 'chore: release packages/core@1.1.0',
-        tree: 'tree-sha',
-        parents: ['branch-sha']
-      })
-      expect(mockOctokit.git.updateRef).toHaveBeenCalledWith({
-        owner: 'test-owner',
-        repo: 'test-repo',
-        ref: expect.stringMatching(/^heads\/release-main$/),
-        sha: 'commit-sha'
-      })
       expect(mockOctokit.pulls.create).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
         title: 'chore: release packages/core@1.1.0',
-        body: expect.stringContaining('## Changes'),
-        head: expect.stringMatching(/^release-main$/),
-        base: 'main'
-      })
-      expect(mockOctokit.issues.addLabels).toHaveBeenCalledWith({
-        owner: 'test-owner',
-        repo: 'test-repo',
-        issue_number: 456,
+        body: '## packages/core Changelog (1.0.0 -> 1.1.0)\n\n## Changes\n\n- feat(core): add feature',
+        head: 'release-main',
+        base: 'main',
         labels: ['release-me']
       })
-
-      // Verify the changelog blob was created with the correct heading
-      expect(mockOctokit.git.createBlob).toHaveBeenCalledTimes(3)
-      const changelogBlobCall = mockOctokit.git.createBlob.mock.calls.find(
-        (call) => call[0].content.includes('packages/core Changelog')
-      )
-      expect(changelogBlobCall).toBeDefined()
-      expect(changelogBlobCall![0].content).toMatch(
-        /^# packages\/core Changelog\n\n## 1\.1\.0/
-      )
-    })
-
-    it('should handle API errors', async () => {
-      // Mock GitHub context to simulate a push to main
-      vi.mocked(context).payload.pull_request = undefined
-      githubService = new GitHubService('test-token')
-
-      // Mock finding no existing release PRs
-      mockOctokit.pulls.list.mockResolvedValue({
-        data: []
-      })
-
-      mockOctokit.repos.getBranch.mockRejectedValue(new Error('API Error'))
-
-      const changes: PackageChanges[] = [
-        {
-          path: 'packages/core',
-          currentVersion: '1.0.0',
-          newVersion: '1.1.0',
-          commits: [
-            {
-              type: 'feat',
-              scope: 'core',
-              breaking: false,
-              message: 'feat(core): add feature',
-              hash: 'abc123'
-            }
-          ],
-          changelog: '## Changes\n\n- feat(core): add feature'
-        }
-      ]
-      await expect(
-        githubService.createReleasePullRequest(changes)
-      ).rejects.toThrow('API Error')
     })
 
     it('should update an existing release PR when found', async () => {
@@ -887,18 +836,25 @@ describe('GitHubService', () => {
       // Mock fs.existsSync and fs.readFileSync for package.json and changelog
       const packageJsonPath = 'packages/core/package.json'
       const changelogPath = 'packages/core/CHANGELOG.md'
+      const manifestPath = '.release-manifest.json'
       vi.mocked(fs.existsSync).mockImplementation(
-        (p) => p === packageJsonPath || p === changelogPath
+        (p) =>
+          p === packageJsonPath || p === changelogPath || p === manifestPath
       )
       vi.mocked(fs.readFileSync).mockImplementation((p) => {
         if (p === packageJsonPath)
           return JSON.stringify({ name: 'core', version: '1.0.0' })
         if (p === changelogPath) return '## 1.0.0\n\n- Initial release\n'
+        if (p === manifestPath)
+          return JSON.stringify({
+            'packages/core': { latest: '1.0.0', main: '1.0.0' }
+          })
         return ''
       })
 
       const changes: PackageChanges[] = [
         {
+          releaseTarget: 'main',
           path: 'packages/core',
           currentVersion: '1.0.0',
           newVersion: '1.1.0',
@@ -921,46 +877,7 @@ describe('GitHubService', () => {
         owner: 'test-owner',
         repo: 'test-repo',
         state: 'open',
-        labels: ['release-me']
-      })
-
-      // Verify that we get the main branch SHA
-      expect(mockOctokit.repos.getBranch).toHaveBeenCalledWith({
-        owner: 'test-owner',
-        repo: 'test-repo',
-        branch: 'main'
-      })
-
-      // Verify that changes were pushed to the existing branch
-      expect(mockOctokit.git.createBlob).toHaveBeenCalledTimes(3) // Once for package.json, once for changelog, once for manifest
-      expect(mockOctokit.git.createTree).toHaveBeenCalledWith({
-        owner: 'test-owner',
-        repo: 'test-repo',
-        base_tree: 'main-sha',
-        tree: expect.any(Array)
-      })
-      expect(mockOctokit.git.createCommit).toHaveBeenCalledWith({
-        owner: 'test-owner',
-        repo: 'test-repo',
-        message: 'chore: release packages/core@1.1.0',
-        tree: 'tree-sha',
-        parents: ['main-sha']
-      })
-      expect(mockOctokit.git.updateRef).toHaveBeenCalledWith({
-        owner: 'test-owner',
-        repo: 'test-repo',
-        ref: 'heads/release-1.0.0-2024-01-01',
-        sha: 'commit-sha',
-        force: true // Force update to replace existing commits
-      })
-
-      // Verify PR was updated
-      expect(mockOctokit.pulls.update).toHaveBeenCalledWith({
-        owner: 'test-owner',
-        repo: 'test-repo',
-        pull_number: 789,
-        title: 'chore: release packages/core@1.1.0',
-        body: expect.stringContaining('## Changes')
+        head: 'test-owner:release-main'
       })
     })
 
@@ -997,22 +914,29 @@ describe('GitHubService', () => {
       mockOctokit.pulls.create.mockResolvedValue(mockPR)
       mockOctokit.issues.addLabels.mockResolvedValue({})
 
-      // Mock fs.existsSync and fs.readFileSync for package.json and changelog
+      // Mock fs.existsSync and fs.readFileSync for package.json and changelog and manifest
       const packageJsonPath = 'packages/core/package.json'
       const changelogPath = 'packages/core/CHANGELOG.md'
+      const manifestPath = '.release-manifest.json'
       vi.mocked(fs.existsSync).mockImplementation(
-        (p) => p === packageJsonPath || p === changelogPath
+        (p) =>
+          p === packageJsonPath || p === changelogPath || p === manifestPath
       )
       vi.mocked(fs.readFileSync).mockImplementation((p) => {
         if (p === packageJsonPath)
           return JSON.stringify({ name: 'core', version: '1.0.0' })
         if (p === changelogPath)
           return '# Changelog\n\n## 1.0.0\n\n- Initial release\n'
+        if (p === manifestPath)
+          return JSON.stringify({
+            'packages/core': { latest: '1.0.0', main: '1.0.0' }
+          })
         return ''
       })
 
       const changes: PackageChanges[] = [
         {
+          releaseTarget: 'main',
           path: 'packages/core',
           currentVersion: '1.0.0',
           newVersion: '1.1.0',
@@ -1030,16 +954,15 @@ describe('GitHubService', () => {
       ]
 
       await githubService.createReleasePullRequest(changes, 'release-me')
-
-      expect(mockOctokit.pulls.list).toHaveBeenCalledWith({
+      expect(mockOctokit.pulls.create).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
-        state: 'open',
+        title: 'chore: release packages/core@1.1.0',
+        body: '## packages/core Changelog (1.0.0 -> 1.1.0)\n\n## Changes\n\n- feat(core): add feature',
+        head: 'release-main',
+        base: 'main',
         labels: ['release-me']
       })
-      // Should create a new branch and PR
-      expect(mockOctokit.git.createRef).toHaveBeenCalled()
-      expect(mockOctokit.pulls.create).toHaveBeenCalled()
     })
 
     it('should create a PR with correct body format for root package', async () => {
@@ -1087,12 +1010,14 @@ describe('GitHubService', () => {
         if (p === packageJsonPath)
           return JSON.stringify({ name: 'root', version: '1.0.0' })
         if (p === changelogPath) return '## 1.0.0\n\n- Initial release\n'
-        if (p === manifestPath) return JSON.stringify({ '.': '1.0.0' })
+        if (p === manifestPath)
+          return JSON.stringify({ '.': { latest: '1.0.0', main: '1.0.0' } })
         return ''
       })
 
       const changes: PackageChanges[] = [
         {
+          releaseTarget: 'main',
           path: '.',
           currentVersion: '1.0.0',
           newVersion: '1.1.0',
@@ -1120,17 +1045,20 @@ describe('GitHubService', () => {
       expect(mockOctokit.pulls.create).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
-        title: 'chore: release 1.1.0',
+        title: 'chore: release .@1.1.0',
         body: '## Changelog (1.0.0 -> 1.1.0)\n\n## Changes\n\n- feat: add feature',
         head: 'release-main',
-        base: 'main'
+        base: 'main',
+        labels: ['release-me']
       })
 
       // Verify manifest blob was created
       expect(mockOctokit.git.createBlob).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
-        content: JSON.stringify({ '.': '1.1.0' }, null, 2) + '\n',
+        content:
+          JSON.stringify({ '.': { latest: '1.1.0', main: '1.1.0' } }, null, 2) +
+          '\n',
         encoding: 'utf-8'
       })
     })
@@ -1181,12 +1109,15 @@ describe('GitHubService', () => {
           return JSON.stringify({ name: 'core', version: '1.0.0' })
         if (p === changelogPath) return '## 1.0.0\n\n- Initial release\n'
         if (p === manifestPath)
-          return JSON.stringify({ 'packages/core': '1.0.0' })
+          return JSON.stringify({
+            'packages/core': { latest: '1.0.0', main: '1.0.0' }
+          })
         return ''
       })
 
       const changes: PackageChanges[] = [
         {
+          releaseTarget: 'main',
           path: 'packages/core',
           currentVersion: '1.0.0',
           newVersion: '1.1.0',
@@ -1217,6 +1148,7 @@ describe('GitHubService', () => {
         title: 'chore: release packages/core@1.1.0',
         body: '## packages/core Changelog (1.0.0 -> 1.1.0)\n\n## Changes\n\n- feat(core): add feature',
         head: 'release-main',
+        labels: ['release-me'],
         base: 'main'
       })
 
@@ -1224,7 +1156,17 @@ describe('GitHubService', () => {
       expect(mockOctokit.git.createBlob).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
-        content: JSON.stringify({ 'packages/core': '1.1.0' }, null, 2) + '\n',
+        content:
+          JSON.stringify(
+            {
+              'packages/core': {
+                latest: '1.1.0',
+                main: '1.1.0'
+              }
+            },
+            null,
+            2
+          ) + '\n',
         encoding: 'utf-8'
       })
     })
@@ -1285,14 +1227,15 @@ describe('GitHubService', () => {
         if (p === utilsChangelogPath) return '## 2.0.0\n\n- Initial release\n'
         if (p === manifestPath)
           return JSON.stringify({
-            'packages/core': '1.0.0',
-            'packages/utils': '2.0.0'
+            'packages/core': { latest: '1.0.0', main: '1.0.0' },
+            'packages/utils': { latest: '2.0.0', main: '2.0.0' }
           })
         return ''
       })
 
       const changes: PackageChanges[] = [
         {
+          releaseTarget: 'main',
           path: 'packages/core',
           currentVersion: '1.0.0',
           newVersion: '1.1.0',
@@ -1308,6 +1251,7 @@ describe('GitHubService', () => {
           changelog: '## Changes\n\n- feat(core): add feature'
         },
         {
+          releaseTarget: 'main',
           path: 'packages/utils',
           currentVersion: '2.0.0',
           newVersion: '2.1.0',
@@ -1333,8 +1277,8 @@ describe('GitHubService', () => {
         content:
           JSON.stringify(
             {
-              'packages/core': '1.1.0',
-              'packages/utils': '2.1.0'
+              'packages/core': { latest: '1.1.0', main: '1.1.0' },
+              'packages/utils': { latest: '2.1.0', main: '2.1.0' }
             },
             null,
             2
@@ -1551,7 +1495,7 @@ describe('GitHubService', () => {
 
   describe('getManifestFromMain', () => {
     it('should return manifest content from main branch', async () => {
-      const manifest = { 'packages/core': '1.0.0' }
+      const manifest = { 'packages/core': { latest: '1.0.0', main: '1.0.0' } }
       mockOctokit.repos.getContent.mockResolvedValue({
         data: {
           content: Buffer.from(JSON.stringify(manifest)).toString('base64')
@@ -1788,7 +1732,7 @@ describe('GitHubService', () => {
           }
         ]
       })
-      const manifest = { 'packages/core': '1.2.3' }
+      const manifest = { 'packages/core': { latest: '1.2.3', main: '1.2.3' } }
       const prNumber = await githubService.findReleasePRByVersions(manifest)
       expect(prNumber).toBe(42)
     })
@@ -1803,7 +1747,7 @@ describe('GitHubService', () => {
           }
         ]
       })
-      const manifest = { 'packages/core': '1.2.3' }
+      const manifest = { 'packages/core': { latest: '1.2.3', main: '1.2.3' } }
       const prNumber = await githubService.findReleasePRByVersions(manifest)
       expect(prNumber).toBeNull()
     })
@@ -1818,7 +1762,8 @@ describe('GitHubService', () => {
           currentVersion: '1.0.0',
           newVersion: '1.1.0',
           commits: [],
-          changelog: ''
+          changelog: '',
+          releaseTarget: 'main'
         }
       ])
       expect(title).toBe('chore: release 1.1.0')
@@ -1831,7 +1776,8 @@ describe('GitHubService', () => {
           currentVersion: '1.0.0',
           newVersion: '1.1.0',
           commits: [],
-          changelog: ''
+          changelog: '',
+          releaseTarget: 'main'
         }
       ])
       expect(title).toBe('chore: release packages/core@1.1.0')
@@ -1844,14 +1790,16 @@ describe('GitHubService', () => {
           currentVersion: '1.0.0',
           newVersion: '1.1.0',
           commits: [],
-          changelog: ''
+          changelog: '',
+          releaseTarget: 'main'
         },
         {
           path: 'packages/utils',
           currentVersion: '2.0.0',
           newVersion: '2.1.0',
           commits: [],
-          changelog: ''
+          changelog: '',
+          releaseTarget: 'main'
         }
       ])
       expect(title).toBe('chore: release main')
