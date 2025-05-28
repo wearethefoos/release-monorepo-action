@@ -195,8 +195,22 @@ describe('main.ts', () => {
     await run()
     expect(githubServiceMock.createRelease).toHaveBeenCalled()
     expect(githubServiceMock.addLabel).toHaveBeenCalledWith('released', 123)
-    expect(core.setOutput).toHaveBeenCalledWith('version', expect.any(String))
     expect(core.setOutput).toHaveBeenCalledWith('prerelease', false)
+    expect(core.setOutput).toHaveBeenCalledWith(
+      'versions',
+      JSON.stringify([
+        {
+          path: 'packages/core',
+          target: 'canary',
+          version: '1.1.0'
+        },
+        {
+          path: 'packages/utils',
+          target: 'canary',
+          version: '2.2.0'
+        }
+      ])
+    )
   })
 
   it('should create PR with release-me tag when pushing to main', async () => {
@@ -316,8 +330,22 @@ describe('main.ts', () => {
     })
     await run()
     expect(githubServiceMock.createRelease).toHaveBeenCalled()
-    expect(core.setOutput).toHaveBeenCalledWith('version', expect.any(String))
     expect(core.setOutput).toHaveBeenCalledWith('prerelease', false)
+    expect(core.setOutput).toHaveBeenCalledWith(
+      'versions',
+      JSON.stringify([
+        {
+          path: 'packages/core',
+          target: 'canary',
+          version: '1.1.0'
+        },
+        {
+          path: 'packages/utils',
+          target: 'canary',
+          version: '2.2.0'
+        }
+      ])
+    )
   })
 
   it('should find release PR by versions when commit lookup fails', async () => {
@@ -355,8 +383,22 @@ describe('main.ts', () => {
     await run()
     expect(githubServiceMock.createRelease).toHaveBeenCalled()
     expect(githubServiceMock.addLabel).toHaveBeenCalledWith('released', 456)
-    expect(core.setOutput).toHaveBeenCalledWith('version', expect.any(String))
     expect(core.setOutput).toHaveBeenCalledWith('prerelease', false)
+    expect(core.setOutput).toHaveBeenCalledWith(
+      'versions',
+      JSON.stringify([
+        {
+          path: 'packages/core',
+          target: 'canary',
+          version: '1.1.0'
+        },
+        {
+          path: 'packages/utils',
+          target: 'canary',
+          version: '2.2.0'
+        }
+      ])
+    )
   })
 
   it('should handle prerelease PRs with RC versions', async () => {

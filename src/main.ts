@@ -67,6 +67,9 @@ export async function run(): Promise<void> {
       return
     }
 
+    // Set prerelease flag in output
+    core.setOutput('prerelease', isPrerelease)
+
     // Read and parse the manifest file from main branch
     const manifest = await github.getManifestFromMain(manifestFile, rootDir)
     if (Object.keys(manifest).length === 0) {
@@ -114,9 +117,6 @@ export async function run(): Promise<void> {
         newVersion = `${major}.${minor}.${parseInt(patch) + 1}`
       }
 
-      // Set prerelease flag in output
-      core.setOutput('prerelease', isPrerelease)
-
       // If this is a prerelease, append rc.<number>
       if (isPrerelease) {
         const rcNumber = await github.getLatestRcVersion(
@@ -124,10 +124,7 @@ export async function run(): Promise<void> {
           newVersion
         )
         newVersion = `${newVersion}-rc.${rcNumber}`
-        core.info('Skipping creating release PR for prerelease.')
-        core.setOutput('version', newVersion)
         prereleaseVersionCommentLines.push(`- ${newVersion} for ${packagePath}`)
-        continue
       }
 
       changes.push({
@@ -146,8 +143,25 @@ export async function run(): Promise<void> {
       return
     }
 
+    if (changes.length === 1) {
+      core.setOutput('version', changes[0].newVersion)
+    } else {
+      core.setOutput(
+        'versions',
+        JSON.stringify(
+          changes.map((c) => {
+            return {
+              path: c.path,
+              target: c.releaseTarget,
+              version: c.newVersion
+            }
+          })
+        )
+      )
+    }
+
     if (isPrerelease) {
-      core.debug('Returning early: prerelease')
+      core.info('Skipping creating release PR for prerelease.')
 
       try {
         await github.createComment(prereleaseVersionCommentLines.join('\n'))
@@ -155,6 +169,7 @@ export async function run(): Promise<void> {
         core.warning(prereleaseVersionCommentLines.join('\n'))
         core.info(`Failed to create PR comment: ${error}`)
       }
+      core.debug('Returning early: prerelease')
       return
     }
 
@@ -172,7 +187,6 @@ export async function run(): Promise<void> {
         // Create release and add released label
         await github.createRelease(changes)
         await github.addLabel('released', prNumber)
-        core.setOutput('version', changes[0].newVersion)
         core.debug('Returning after createRelease and addLabel')
         return
       }
@@ -183,7 +197,6 @@ export async function run(): Promise<void> {
       core.debug('Creating release for squashed merge')
       // Create release for squashed merge
       await github.createRelease(changes)
-      core.setOutput('version', changes[0].newVersion)
       core.debug('Returning after createRelease for squashed merge')
       return
     }

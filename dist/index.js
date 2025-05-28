@@ -39355,6 +39355,8 @@ async function run() {
             coreExports.debug('Returning early: prerelease PR but prereleases disabled');
             return;
         }
+        // Set prerelease flag in output
+        coreExports.setOutput('prerelease', isPrerelease);
         // Read and parse the manifest file from main branch
         const manifest = await github.getManifestFromMain(manifestFile, rootDir);
         if (Object.keys(manifest).length === 0) {
@@ -39395,16 +39397,11 @@ async function run() {
                 const [major, minor, patch] = currentVersion.split('.');
                 newVersion = `${major}.${minor}.${parseInt(patch) + 1}`;
             }
-            // Set prerelease flag in output
-            coreExports.setOutput('prerelease', isPrerelease);
             // If this is a prerelease, append rc.<number>
             if (isPrerelease) {
                 const rcNumber = await github.getLatestRcVersion(packagePath, newVersion);
                 newVersion = `${newVersion}-rc.${rcNumber}`;
-                coreExports.info('Skipping creating release PR for prerelease.');
-                coreExports.setOutput('version', newVersion);
                 prereleaseVersionCommentLines.push(`- ${newVersion} for ${packagePath}`);
-                continue;
             }
             changes.push({
                 path: packagePath,
@@ -39420,8 +39417,20 @@ async function run() {
             coreExports.debug('Returning early: no version changes for any package');
             return;
         }
+        if (changes.length === 1) {
+            coreExports.setOutput('version', changes[0].newVersion);
+        }
+        else {
+            coreExports.setOutput('versions', JSON.stringify(changes.map((c) => {
+                return {
+                    path: c.path,
+                    target: c.releaseTarget,
+                    version: c.newVersion
+                };
+            })));
+        }
         if (isPrerelease) {
-            coreExports.debug('Returning early: prerelease');
+            coreExports.info('Skipping creating release PR for prerelease.');
             try {
                 await github.createComment(prereleaseVersionCommentLines.join('\n'));
             }
@@ -39429,6 +39438,7 @@ async function run() {
                 coreExports.warning(prereleaseVersionCommentLines.join('\n'));
                 coreExports.info(`Failed to create PR comment: ${error}`);
             }
+            coreExports.debug('Returning early: prerelease');
             return;
         }
         // Check if this is a release PR with release-me tag
@@ -39444,7 +39454,6 @@ async function run() {
                 // Create release and add released label
                 await github.createRelease(changes);
                 await github.addLabel('released', prNumber);
-                coreExports.setOutput('version', changes[0].newVersion);
                 coreExports.debug('Returning after createRelease and addLabel');
                 return;
             }
@@ -39454,7 +39463,6 @@ async function run() {
             coreExports.debug('Creating release for squashed merge');
             // Create release for squashed merge
             await github.createRelease(changes);
-            coreExports.setOutput('version', changes[0].newVersion);
             coreExports.debug('Returning after createRelease for squashed merge');
             return;
         }
