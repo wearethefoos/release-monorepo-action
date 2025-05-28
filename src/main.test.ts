@@ -43,8 +43,16 @@ vi.mock('./github.js', () => ({
 
 let run: () => Promise<void>
 const mockManifest = {
-  'packages/core': '1.0.0',
-  'packages/utils': '2.1.0'
+  'packages/core': {
+    latest: '1.0.0',
+    main: '1.0.0',
+    canary: '1.0.0'
+  },
+  'packages/utils': {
+    latest: '2.1.0',
+    main: '2.1.0',
+    canary: '2.1.0'
+  }
 }
 
 describe('main.ts', () => {
@@ -67,6 +75,8 @@ describe('main.ts', () => {
           return 'Prerelease'
         case 'root-dir':
           return '.'
+        case 'release-target':
+          return 'main'
         default:
           return ''
       }
@@ -97,13 +107,15 @@ describe('main.ts', () => {
     ;(core.getInput as Mock).mockImplementation((name: string) => {
       if (name === 'create-prerelease') return 'true'
       if (name === 'prerelease-label') return 'Prerelease'
+      if (name === 'release-target') return 'canary'
       return ''
     })
     await run()
     expect(githubServiceMock.createReleasePullRequest).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({
-          newVersion: expect.stringMatching(/-rc\.1$/)
+          newVersion: expect.stringMatching(/-rc\.1$/),
+          releaseTarget: 'canary'
         })
       ]),
       'release-me'
@@ -119,9 +131,17 @@ describe('main.ts', () => {
     )
     githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue(mockCommits)
     githubServiceMock.createReleasePullRequest.mockResolvedValue(undefined)
+    ;(core.getInput as Mock).mockImplementation((name: string) => {
+      if (name === 'release-target') return 'canary'
+      return ''
+    })
     await run()
     expect(githubServiceMock.createReleasePullRequest).toHaveBeenCalledWith(
-      expect.any(Array),
+      expect.arrayContaining([
+        expect.objectContaining({
+          releaseTarget: 'canary'
+        })
+      ]),
       'release-me'
     )
   })
@@ -176,6 +196,10 @@ describe('main.ts', () => {
       '## 1.1.0\n\n- New feature'
     )
     githubServiceMock.addLabel.mockResolvedValue(undefined)
+    ;(core.getInput as Mock).mockImplementation((name: string) => {
+      if (name === 'release-target') return 'canary'
+      return ''
+    })
     await run()
     expect(githubServiceMock.createRelease).toHaveBeenCalled()
     expect(githubServiceMock.addLabel).toHaveBeenCalledWith('released', 123)
@@ -193,9 +217,17 @@ describe('main.ts', () => {
     githubServiceMock.getPullRequestFromCommit.mockResolvedValue(null)
     githubServiceMock.wasReleasePR.mockResolvedValue(false)
     githubServiceMock.createReleasePullRequest.mockResolvedValue(undefined)
+    ;(core.getInput as Mock).mockImplementation((name: string) => {
+      if (name === 'release-target') return 'canary'
+      return ''
+    })
     await run()
     expect(githubServiceMock.createReleasePullRequest).toHaveBeenCalledWith(
-      expect.any(Array),
+      expect.arrayContaining([
+        expect.objectContaining({
+          releaseTarget: 'canary'
+        })
+      ]),
       'release-me'
     )
   })
@@ -205,6 +237,7 @@ describe('main.ts', () => {
     ;(core.getInput as Mock).mockImplementation((name: string) => {
       if (name === 'create-prerelease') return 'false'
       if (name === 'prerelease-label') return 'Prerelease'
+      if (name === 'release-target') return 'main'
       return ''
     })
     await run()
@@ -238,12 +271,21 @@ describe('main.ts', () => {
     githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue([])
     ;(core.getInput as Mock).mockImplementation((name: string) => {
       if (name === 'manifest-file') return '.release-manifest.json'
+      if (name === 'release-target') return 'canary'
       return ''
     })
     ;(fs.readFileSync as unknown as Mock).mockReturnValue(
       JSON.stringify({
-        'packages/core': '1.0.0',
-        'packages/utils': '2.1.0'
+        'packages/core': {
+          latest: '1.0.0',
+          main: '1.0.0',
+          canary: '1.0.0'
+        },
+        'packages/utils': {
+          latest: '2.1.0',
+          main: '2.1.0',
+          canary: '2.1.0'
+        }
       })
     )
     await run()
@@ -276,6 +318,10 @@ describe('main.ts', () => {
       '## 1.1.0\n\n- New feature'
     )
     githubServiceMock.addLabel.mockResolvedValue(undefined)
+    ;(core.getInput as Mock).mockImplementation((name: string) => {
+      if (name === 'release-target') return 'canary'
+      return ''
+    })
     await run()
     expect(githubServiceMock.createRelease).toHaveBeenCalled()
     expect(core.setOutput).toHaveBeenCalledWith('version', expect.any(String))
@@ -310,6 +356,10 @@ describe('main.ts', () => {
     )
     githubServiceMock.addLabel.mockResolvedValue(undefined)
     githubServiceMock.wasManifestUpdatedInLastCommit.mockResolvedValue(false)
+    ;(core.getInput as Mock).mockImplementation((name: string) => {
+      if (name === 'release-target') return 'canary'
+      return ''
+    })
     await run()
     expect(githubServiceMock.createRelease).toHaveBeenCalled()
     expect(githubServiceMock.addLabel).toHaveBeenCalledWith('released', 456)
@@ -329,6 +379,7 @@ describe('main.ts', () => {
     ;(core.getInput as Mock).mockImplementation((name: string) => {
       if (name === 'create-prerelease') return 'true'
       if (name === 'prerelease-label') return 'Prerelease'
+      if (name === 'release-target') return 'canary'
       return ''
     })
     githubServiceMock.wasManifestUpdatedInLastCommit.mockResolvedValue(false)
@@ -336,11 +387,23 @@ describe('main.ts', () => {
     expect(githubServiceMock.createReleasePullRequest).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({
-          newVersion: expect.stringMatching(/-rc\.2$/)
+          newVersion: expect.stringMatching(/-rc\.2$/),
+          releaseTarget: 'canary'
         })
       ]),
       'release-me'
     )
     expect(core.setOutput).toHaveBeenCalledWith('prerelease', true)
+  })
+
+  it('should throw error if release-target is "latest"', async () => {
+    ;(core.getInput as Mock).mockImplementation((name: string) => {
+      if (name === 'release-target') return 'latest'
+      return ''
+    })
+    await run()
+    expect(core.setFailed).toHaveBeenCalledWith(
+      'release-target cannot be "latest"'
+    )
   })
 })

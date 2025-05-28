@@ -1,7 +1,11 @@
 import * as core from '@actions/core'
 import { context } from '@actions/github'
 import { GitHubService } from './github.js'
-import { PackageChanges } from './types.js'
+import {
+  PackageChanges,
+  PackageManifest,
+  PackageTargetVersions
+} from './types.js'
 import {
   parseConventionalCommit,
   determineVersionBump,
@@ -20,13 +24,19 @@ export async function run(): Promise<void> {
     const manifestFile = core.getInput('manifest-file', { required: true })
     const createPreRelease = core.getInput('create-prerelease') === 'true'
     const prereleaseLabel = core.getInput('prerelease-label')
+    const releaseTarget = core.getInput('release-target')
+
+    if (releaseTarget === 'latest') {
+      throw new Error('release-target cannot be "latest"')
+    }
 
     const github = new GitHubService(token)
-    const isDeletedReleaseBranch = await github.isDeletedReleaseBranch()
+    const isDeletedReleaseBranch =
+      await github.isDeletedReleaseBranch(releaseTarget)
 
     if (isDeletedReleaseBranch) {
       core.info(
-        'Seems we are on an old release-main branch that does not exist anymore, nothing to do'
+        'Seems we are on an old release branch that does not exist anymore, nothing to do'
       )
       core.debug('Returning early: isDeletedReleaseBranch')
       return
@@ -74,7 +84,7 @@ export async function run(): Promise<void> {
 
     // Calculate version changes for each package
     const changes: PackageChanges[] = []
-    for (const [packagePath, currentVersion] of Object.entries(manifest)) {
+    for (const [packagePath, targetVersions] of Object.entries(manifest)) {
       const commits = await github.getCommitsSinceLastRelease(
         packagePath,
         allCommits
@@ -85,6 +95,7 @@ export async function run(): Promise<void> {
       const versionBump = determineVersionBump(parsedCommits)
       if (!versionBump) continue
 
+      const currentVersion = targetVersions.latest
       let newVersion = currentVersion
       if (versionBump === 'major') {
         newVersion = `${parseInt(currentVersion.split('.')[0]) + 1}.0.0`
@@ -110,7 +121,8 @@ export async function run(): Promise<void> {
         currentVersion,
         newVersion,
         commits: parsedCommits,
-        changelog: generateChangelog(parsedCommits)
+        changelog: generateChangelog(parsedCommits),
+        releaseTarget
       })
     }
 
