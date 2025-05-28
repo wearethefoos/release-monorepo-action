@@ -20,13 +20,19 @@ export async function run(): Promise<void> {
     const manifestFile = core.getInput('manifest-file', { required: true })
     const createPreRelease = core.getInput('create-prerelease') === 'true'
     const prereleaseLabel = core.getInput('prerelease-label')
+    const releaseTarget = core.getInput('release-target')
+
+    if (releaseTarget === 'latest') {
+      throw new Error('release-target cannot be "latest"')
+    }
 
     const github = new GitHubService(token)
-    const isDeletedReleaseBranch = await github.isDeletedReleaseBranch()
+    const isDeletedReleaseBranch =
+      await github.isDeletedReleaseBranch(releaseTarget)
 
     if (isDeletedReleaseBranch) {
       core.info(
-        'Seems we are on an old release-main branch that does not exist anymore, nothing to do'
+        'Seems we are on an old release branch that does not exist anymore, nothing to do'
       )
       core.debug('Returning early: isDeletedReleaseBranch')
       return
@@ -47,12 +53,22 @@ export async function run(): Promise<void> {
       core.info(
         'prereleases are disabled and this is a prerelease PR, skipping'
       )
-      await github.createComment(
-        `⚠️ Prereleases are currently disabled. To enable prereleases, set the input "create-prerelease" to true in your workflow.`
-      )
+      try {
+        await github.createComment(
+          `⚠️ Prereleases are currently disabled. To enable prereleases, set the input "create-prerelease" to true in your workflow.`
+        )
+      } catch (error) {
+        core.warning(
+          `⚠️ Prereleases are currently disabled. To enable prereleases, set the input "create-prerelease" to true in your workflow.`
+        )
+        core.info(`Failed to create PR comment: ${error}`)
+      }
       core.debug('Returning early: prerelease PR but prereleases disabled')
       return
     }
+
+    // Set prerelease flag in output
+    core.setOutput('prerelease', isPrerelease)
 
     // Read and parse the manifest file from main branch
     const manifest = await github.getManifestFromMain(manifestFile, rootDir)
@@ -74,7 +90,11 @@ export async function run(): Promise<void> {
 
     // Calculate version changes for each package
     const changes: PackageChanges[] = []
-    for (const [packagePath, currentVersion] of Object.entries(manifest)) {
+    const prereleaseVersionCommentLines: string[] = isPrerelease
+      ? ['ℹ️ Created prereleases:', '']
+      : []
+
+    for (const [packagePath, targetVersions] of Object.entries(manifest)) {
       const commits = await github.getCommitsSinceLastRelease(
         packagePath,
         allCommits
@@ -85,6 +105,7 @@ export async function run(): Promise<void> {
       const versionBump = determineVersionBump(parsedCommits)
       if (!versionBump) continue
 
+      const currentVersion = targetVersions.latest
       let newVersion = currentVersion
       if (versionBump === 'major') {
         newVersion = `${parseInt(currentVersion.split('.')[0]) + 1}.0.0`
@@ -103,6 +124,7 @@ export async function run(): Promise<void> {
           newVersion
         )
         newVersion = `${newVersion}-rc.${rcNumber}`
+        prereleaseVersionCommentLines.push(`- ${newVersion} for ${packagePath}`)
       }
 
       changes.push({
@@ -110,7 +132,8 @@ export async function run(): Promise<void> {
         currentVersion,
         newVersion,
         commits: parsedCommits,
-        changelog: generateChangelog(parsedCommits)
+        changelog: generateChangelog(parsedCommits),
+        releaseTarget
       })
     }
 
@@ -120,8 +143,36 @@ export async function run(): Promise<void> {
       return
     }
 
-    // Set prerelease flag in output
-    core.setOutput('prerelease', isPrerelease)
+    if (changes.length === 1) {
+      core.setOutput('version', changes[0].newVersion)
+    } else {
+      core.setOutput(
+        'versions',
+        JSON.stringify(
+          changes.map((c) => {
+            return {
+              path: c.path,
+              target: c.releaseTarget,
+              version: c.newVersion
+            }
+          })
+        )
+      )
+    }
+
+    if (isPrerelease) {
+      core.info('Skipping creating release PR for prerelease.')
+
+      try {
+        await github.createComment(prereleaseVersionCommentLines.join('\n'))
+      } catch (error) {
+        core.warning(prereleaseVersionCommentLines.join('\n'))
+        core.info(`Failed to create PR comment: ${error}`)
+      }
+      await github.createRelease(changes)
+      core.debug('Returning early: prerelease')
+      return
+    }
 
     // Check if this is a release PR with release-me tag
     if (labels.includes('release-me')) {
@@ -137,7 +188,6 @@ export async function run(): Promise<void> {
         // Create release and add released label
         await github.createRelease(changes)
         await github.addLabel('released', prNumber)
-        core.setOutput('version', changes[0].newVersion)
         core.debug('Returning after createRelease and addLabel')
         return
       }
@@ -148,16 +198,7 @@ export async function run(): Promise<void> {
       core.debug('Creating release for squashed merge')
       // Create release for squashed merge
       await github.createRelease(changes)
-      core.setOutput('version', changes[0].newVersion)
       core.debug('Returning after createRelease for squashed merge')
-      return
-    }
-
-    // For prerelease PRs, create a release PR with the RC version
-    if (isPrerelease) {
-      core.debug('Creating release PR for prerelease PR')
-      await github.createReleasePullRequest(changes, 'release-me')
-      core.debug('Returning after createReleasePullRequest for prerelease PR')
       return
     }
 

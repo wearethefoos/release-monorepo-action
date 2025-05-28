@@ -101,3 +101,4 @@ __tests__/runner/*
 # IDE files
 .idea
 *.code-workspace
+example/apps/rust-app/target

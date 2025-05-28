@@ -2,10 +2,16 @@ export interface ReleaseConfig {
   manifestFile: string
   createPreReleases: boolean
   prereleaseLabel: string
+  releaseTarget: string
+}
+
+export interface PackageTargetVersions {
+  latest: string
+  [target: string]: string
 }
 
 export interface PackageManifest {
-  [packagePath: string]: string
+  [packagePath: string]: PackageTargetVersions
 }
 
 export interface ConventionalCommit {
@@ -22,6 +28,7 @@ export interface PackageChanges {
   newVersion: string
   commits: ConventionalCommit[]
   changelog: string
+  releaseTarget: string
 }
 
 export interface ReleaseContext {

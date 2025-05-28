@@ -26,6 +26,12 @@ inputs:
     description: 'The PR label to use for prereleases'
     required: false
     default: 'Prerelease'
+  release-target:
+    description:
+      'The target environment to release to (e.g. main, canary, aws). Cannot be
+      "latest"'
+    required: false
+    default: 'main'
 
 outputs:
   version:
