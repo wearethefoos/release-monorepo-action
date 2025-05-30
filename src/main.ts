@@ -18,29 +18,38 @@ export async function run(): Promise<void> {
     const token = core.getInput('token', { required: true })
     const rootDir = core.getInput('root-dir', { required: false })
     const manifestFile = core.getInput('manifest-file', { required: true })
-    const createPreRelease = core.getInput('create-prerelease') === 'true'
+    const createPreReleases = core.getInput('create-prereleases') === 'true'
     const prereleaseLabel = core.getInput('prerelease-label')
     const releaseTarget = core.getInput('release-target')
 
     if (releaseTarget === 'latest') {
-      throw new Error('release-target cannot be "latest"')
+      throw new Error(
+        'release-target cannot be "latest", because it is reserved for the latest release'
+      )
     }
 
     const github = new GitHubService(token)
+    const labels = await github.getPullRequestLabels()
+
     const isDeletedReleaseBranch =
       await github.isDeletedReleaseBranch(releaseTarget)
 
     if (isDeletedReleaseBranch) {
+      if (labels.includes('release-me')) {
+        core.debug('Adding released label to PR')
+        await github.addLabel('released', context.issue.number)
+        await github.removeLabel('release-me', context.issue.number)
+      }
+
       core.info(
         'Seems we are on an old release branch that does not exist anymore, nothing to do'
       )
+
       core.debug('Returning early: isDeletedReleaseBranch')
       return
     }
 
-    const labels = await github.getPullRequestLabels()
-
-    // Check if this is a release PR
+    // Check if this is an already released PR
     if (labels.includes('released')) {
       core.info('This PR has already been released, skipping')
       core.debug('Returning early: PR already released')
@@ -49,17 +58,15 @@ export async function run(): Promise<void> {
 
     // Check if this is a prerelease PR
     const isPrerelease = labels.includes(prereleaseLabel)
-    if (isPrerelease && !createPreRelease) {
-      core.info(
-        'prereleases are disabled and this is a prerelease PR, skipping'
-      )
+
+    if (isPrerelease && !createPreReleases) {
       try {
         await github.createComment(
-          `⚠️ Prereleases are currently disabled. To enable prereleases, set the input "create-prerelease" to true in your workflow.`
+          '⚠️ Prereleases are currently disabled. To enable prereleases, set the input "create-prereleases" to true in your workflow.'
         )
       } catch (error) {
         core.warning(
-          `⚠️ Prereleases are currently disabled. To enable prereleases, set the input "create-prerelease" to true in your workflow.`
+          '⚠️ Prereleases are currently disabled. To enable prereleases, set the input "create-prereleases" to true in your workflow.'
         )
         core.info(`Failed to create PR comment: ${error}`)
       }
@@ -72,6 +79,7 @@ export async function run(): Promise<void> {
 
     // Read and parse the manifest file from main branch
     const manifest = await github.getManifestFromMain(manifestFile, rootDir)
+
     if (Object.keys(manifest).length === 0) {
       core.warning(
         `No manifest found in main branch at ${manifestFile} with root dir ${rootDir}`
@@ -91,7 +99,7 @@ export async function run(): Promise<void> {
     // Calculate version changes for each package
     const changes: PackageChanges[] = []
     const prereleaseVersionCommentLines: string[] = isPrerelease
-      ? ['ℹ️ Created prereleases:', '']
+      ? ['ℹ️ Created prereleases for the following packages:', '']
       : []
 
     for (const [packagePath, targetVersions] of Object.entries(manifest)) {
@@ -99,11 +107,20 @@ export async function run(): Promise<void> {
         packagePath,
         allCommits
       )
-      if (commits.length === 0) continue
+
+      if (commits.length === 0) {
+        core.debug(`No commits found for ${packagePath}`)
+        continue
+      }
 
       const parsedCommits = commits.map(parseConventionalCommit)
       const versionBump = determineVersionBump(parsedCommits)
-      if (!versionBump) continue
+      if (!versionBump) {
+        core.debug(
+          `No version bump found for ${packagePath}, skipping version update`
+        )
+        continue
+      }
 
       const currentVersion = targetVersions.latest
       let newVersion = currentVersion

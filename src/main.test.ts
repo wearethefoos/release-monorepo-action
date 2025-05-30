@@ -69,7 +69,7 @@ describe('main.ts', () => {
           return 'test-token'
         case 'manifest-file':
           return '.release-manifest.json'
-        case 'create-prerelease':
+        case 'create-prereleases':
           return 'false'
         case 'prerelease-label':
           return 'Prerelease'
@@ -105,7 +105,7 @@ describe('main.ts', () => {
     githubServiceMock.getLatestRcVersion.mockResolvedValue(1)
     githubServiceMock.createReleasePullRequest.mockResolvedValue(undefined)
     ;(core.getInput as Mock).mockImplementation((name: string) => {
-      if (name === 'create-prerelease') return 'true'
+      if (name === 'create-prereleases') return 'true'
       if (name === 'prerelease-label') return 'Prerelease'
       if (name === 'release-target') return 'canary'
       return ''
@@ -241,15 +241,12 @@ describe('main.ts', () => {
   it('should skip if prereleases are disabled and PR is labeled as prerelease', async () => {
     githubServiceMock.getPullRequestLabels.mockResolvedValue(['Prerelease'])
     ;(core.getInput as Mock).mockImplementation((name: string) => {
-      if (name === 'create-prerelease') return 'false'
+      if (name === 'create-prereleases') return 'false'
       if (name === 'prerelease-label') return 'Prerelease'
       if (name === 'release-target') return 'main'
       return ''
     })
     await run()
-    expect(core.info).toHaveBeenCalledWith(
-      'prereleases are disabled and this is a prerelease PR, skipping'
-    )
     expect(githubServiceMock.createComment).toHaveBeenCalledWith(
       expect.stringContaining('⚠️ Prereleases are currently disabled')
     )
@@ -411,7 +408,7 @@ describe('main.ts', () => {
     githubServiceMock.getLatestRcVersion.mockResolvedValue(2)
     githubServiceMock.createReleasePullRequest.mockResolvedValue(undefined)
     ;(core.getInput as Mock).mockImplementation((name: string) => {
-      if (name === 'create-prerelease') return 'true'
+      if (name === 'create-prereleases') return 'true'
       if (name === 'prerelease-label') return 'Prerelease'
       if (name === 'release-target') return 'canary'
       return ''
@@ -429,7 +426,7 @@ describe('main.ts', () => {
     })
     await run()
     expect(core.setFailed).toHaveBeenCalledWith(
-      'release-target cannot be "latest"'
+      'release-target cannot be "latest", because it is reserved for the latest release'
     )
   })
 })

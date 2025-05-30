@@ -39321,21 +39321,26 @@ async function run() {
         const token = coreExports.getInput('token', { required: true });
         const rootDir = coreExports.getInput('root-dir', { required: false });
         const manifestFile = coreExports.getInput('manifest-file', { required: true });
-        const createPreRelease = coreExports.getInput('create-prerelease') === 'true';
+        const createPreReleases = coreExports.getInput('create-prereleases') === 'true';
         const prereleaseLabel = coreExports.getInput('prerelease-label');
         const releaseTarget = coreExports.getInput('release-target');
         if (releaseTarget === 'latest') {
-            throw new Error('release-target cannot be "latest"');
+            throw new Error('release-target cannot be "latest", because it is reserved for the latest release');
         }
         const github = new GitHubService(token);
+        const labels = await github.getPullRequestLabels();
         const isDeletedReleaseBranch = await github.isDeletedReleaseBranch(releaseTarget);
         if (isDeletedReleaseBranch) {
+            if (labels.includes('release-me')) {
+                coreExports.debug('Adding released label to PR');
+                await github.addLabel('released', githubExports.context.issue.number);
+                await github.removeLabel('release-me', githubExports.context.issue.number);
+            }
             coreExports.info('Seems we are on an old release branch that does not exist anymore, nothing to do');
             coreExports.debug('Returning early: isDeletedReleaseBranch');
             return;
         }
-        const labels = await github.getPullRequestLabels();
-        // Check if this is a release PR
+        // Check if this is an already released PR
         if (labels.includes('released')) {
             coreExports.info('This PR has already been released, skipping');
             coreExports.debug('Returning early: PR already released');
@@ -39343,13 +39348,12 @@ async function run() {
         }
         // Check if this is a prerelease PR
         const isPrerelease = labels.includes(prereleaseLabel);
-        if (isPrerelease && !createPreRelease) {
-            coreExports.info('prereleases are disabled and this is a prerelease PR, skipping');
+        if (isPrerelease && !createPreReleases) {
             try {
-                await github.createComment(`⚠️ Prereleases are currently disabled. To enable prereleases, set the input "create-prerelease" to true in your workflow.`);
+                await github.createComment('⚠️ Prereleases are currently disabled. To enable prereleases, set the input "create-prereleases" to true in your workflow.');
             }
             catch (error) {
-                coreExports.warning(`⚠️ Prereleases are currently disabled. To enable prereleases, set the input "create-prerelease" to true in your workflow.`);
+                coreExports.warning('⚠️ Prereleases are currently disabled. To enable prereleases, set the input "create-prereleases" to true in your workflow.');
                 coreExports.info(`Failed to create PR comment: ${error}`);
             }
             coreExports.debug('Returning early: prerelease PR but prereleases disabled');
@@ -39374,16 +39378,20 @@ async function run() {
         // Calculate version changes for each package
         const changes = [];
         const prereleaseVersionCommentLines = isPrerelease
-            ? ['ℹ️ Created prereleases:', '']
+            ? ['ℹ️ Created prereleases for the following packages:', '']
             : [];
         for (const [packagePath, targetVersions] of Object.entries(manifest)) {
             const commits = await github.getCommitsSinceLastRelease(packagePath, allCommits);
-            if (commits.length === 0)
+            if (commits.length === 0) {
+                coreExports.debug(`No commits found for ${packagePath}`);
                 continue;
+            }
             const parsedCommits = commits.map(parseConventionalCommit);
             const versionBump = determineVersionBump(parsedCommits);
-            if (!versionBump)
+            if (!versionBump) {
+                coreExports.debug(`No version bump found for ${packagePath}, skipping version update`);
                 continue;
+            }
             const currentVersion = targetVersions.latest;
             let newVersion = currentVersion;
             if (versionBump === 'major') {
