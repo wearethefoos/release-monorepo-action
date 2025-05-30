@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.0 (2025-05-30)
+
+### 🚀 Features
+
+- support prereleases via PR tags
+
+### 🐛 Fixes
+
+- detect if running on a deleted release branch
+
 ## 1.5.0 (2025-05-26)
 
 ### 🚀 Features
