@@ -53,6 +53,14 @@ jobs:
         run: |
           echo "Pushing to major release branch"
           major_version=$(echo "${{ steps.release.outputs.version }}" | cut -d '.' -f 1)
-          git branch "releases/v$major_version" "v$major_version"
-          git push --set-upstream $git_remote "releases/v$major_version"
+          major_release_tag="v$major_version"
+          major_release_branch="releases/$major_release_tag"
+
+          major_release_branch_exists=$(git ls-remote --heads ${{ github.repositoryUrl }} $major_release_branch)
+
+          if [ -z "$major_release_branch_exists" ]; then
+            git branch "$major_release_branch" "$major_release_tag"
+            git push --set-upstream ${{ github.repositoryUrl }} "$major_release_branch"
+          fi
+
           echo "Pushed to major release branch"
