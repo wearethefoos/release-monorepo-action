@@ -19,7 +19,7 @@ jobs:
         uses: wearethefoos/release-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          create-prerelease: true
+          create-prereleases: true
 
       - name: Release
         id: release
