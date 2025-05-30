@@ -52,15 +52,17 @@ jobs:
           steps.release.outputs.prerelease == 'false'
         run: |
           echo "Pushing to major release branch"
-          major_version=$(echo "${{ steps.release.outputs.version }}" | cut -d '.' -f 1)
+          major_version=$(echo "1.0.2" | cut -d '.' -f 1)
           major_release_tag="v$major_version"
           major_release_branch="releases/$major_release_tag"
 
-          major_release_branch_exists=$(git ls-remote --heads ${{ github.repositoryUrl }} $major_release_branch)
+          git tag "$major_release_tag" --force --annotate --message "Point $major_release_tag tag to ${{ steps.release.outputs.version }}"
+
+          major_release_branch_exists=$(git ls-remote --heads origin $major_release_branch)
 
           if [ -z "$major_release_branch_exists" ]; then
             git branch "$major_release_branch" "$major_release_tag"
-            git push --set-upstream ${{ github.repositoryUrl }} "$major_release_branch"
+            git push --set-upstream origin "$major_release_branch"
           fi
 
           echo "Pushed to major release branch"
