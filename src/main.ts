@@ -22,6 +22,12 @@ export async function run(): Promise<void> {
     const prereleaseLabel = core.getInput('prerelease-label')
     const releaseTarget = core.getInput('release-target')
 
+    // default outputs
+    core.setOutput('releases-created', false)
+    core.setOutput('prerelease', false)
+    core.setOutput('versions', '[]')
+    core.setOutput('version', '')
+
     if (releaseTarget === 'latest') {
       throw new Error(
         'release-target cannot be "latest", because it is reserved for the latest release'
@@ -165,20 +171,20 @@ export async function run(): Promise<void> {
 
     if (changes.length === 1) {
       core.setOutput('version', changes[0].newVersion)
-    } else {
-      core.setOutput(
-        'versions',
-        JSON.stringify(
-          changes.map((c) => {
-            return {
-              path: c.path,
-              target: c.releaseTarget,
-              version: c.newVersion
-            }
-          })
-        )
-      )
     }
+
+    core.setOutput(
+      'versions',
+      JSON.stringify(
+        changes.map((c) => {
+          return {
+            path: c.path,
+            target: c.releaseTarget,
+            version: c.newVersion
+          }
+        })
+      )
+    )
 
     if (isPrerelease) {
       core.info('Skipping creating release PR for prerelease.')
@@ -191,6 +197,7 @@ export async function run(): Promise<void> {
       }
       core.debug('Creating release for prerelease')
       await github.createRelease(changes, true)
+      core.setOutput('releases-created', true)
       core.debug('Returning early: prerelease')
       return
     }
@@ -214,6 +221,7 @@ export async function run(): Promise<void> {
 
       core.info(`Creating releases...`)
       await github.createRelease(changes)
+      core.setOutput('releases-created', true)
 
       if (prNumber) {
         core.info(`Created releases for PR #${prNumber}`)
@@ -239,6 +247,7 @@ export async function run(): Promise<void> {
       core.info('Creating release for main branch')
       core.debug('Assuming this is a squashed merge of a release PR')
       await github.createRelease(changes)
+      core.setOutput('releases-created', true)
       core.debug('Returning after createRelease for main branch')
       return
     }

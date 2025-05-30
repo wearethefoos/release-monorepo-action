@@ -40580,6 +40580,11 @@ async function run() {
         const createPreReleases = coreExports.getInput('create-prereleases') === 'true';
         const prereleaseLabel = coreExports.getInput('prerelease-label');
         const releaseTarget = coreExports.getInput('release-target');
+        // default outputs
+        coreExports.setOutput('releases-created', false);
+        coreExports.setOutput('prerelease', false);
+        coreExports.setOutput('versions', '[]');
+        coreExports.setOutput('version', '');
         if (releaseTarget === 'latest') {
             throw new Error('release-target cannot be "latest", because it is reserved for the latest release');
         }
@@ -40686,15 +40691,13 @@ async function run() {
         if (changes.length === 1) {
             coreExports.setOutput('version', changes[0].newVersion);
         }
-        else {
-            coreExports.setOutput('versions', JSON.stringify(changes.map((c) => {
-                return {
-                    path: c.path,
-                    target: c.releaseTarget,
-                    version: c.newVersion
-                };
-            })));
-        }
+        coreExports.setOutput('versions', JSON.stringify(changes.map((c) => {
+            return {
+                path: c.path,
+                target: c.releaseTarget,
+                version: c.newVersion
+            };
+        })));
         if (isPrerelease) {
             coreExports.info('Skipping creating release PR for prerelease.');
             try {
@@ -40706,6 +40709,7 @@ async function run() {
             }
             coreExports.debug('Creating release for prerelease');
             await github.createRelease(changes, true);
+            coreExports.setOutput('releases-created', true);
             coreExports.debug('Returning early: prerelease');
             return;
         }
@@ -40725,6 +40729,7 @@ async function run() {
             }
             coreExports.info(`Creating releases...`);
             await github.createRelease(changes);
+            coreExports.setOutput('releases-created', true);
             if (prNumber) {
                 coreExports.info(`Created releases for PR #${prNumber}`);
                 await github.addLabel('released', prNumber);
@@ -40742,6 +40747,7 @@ async function run() {
             coreExports.info('Creating release for main branch');
             coreExports.debug('Assuming this is a squashed merge of a release PR');
             await github.createRelease(changes);
+            coreExports.setOutput('releases-created', true);
             coreExports.debug('Returning after createRelease for main branch');
             return;
         }

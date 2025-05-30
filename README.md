@@ -25,11 +25,12 @@ accordingly.
 
 ## Outputs
 
-| Output       | Description                                            |
-| ------------ | ------------------------------------------------------ |
-| `version`    | The version that was released                          |
-| `prerelease` | Whether the release was a prerelease                   |
-| `versions`   | The versions that were released (e.g. from a monorepo) |
+| Output             | Description                                                                                                                 |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `releases-created` | Whether one or more releases were created                                                                                   |
+| `version`          | The version that was released                                                                                               |
+| `prerelease`       | Whether the release was a prerelease                                                                                        |
+| `versions`         | JSON formatted Array of versions (path, version, and whether it was a prerelease) that were released (e.g. from a monorepo) |
 
 ## Manifest File Format
 
@@ -38,8 +39,15 @@ release in the format:
 
 ```json
 {
-  "path/to/package": "1.0.0",
-  "another/package": "2.1.0"
+  "path/to/package": {
+    "latest": "1.0.0",
+    "main": "0.9.33",
+    "canary": "1.0.0"
+  },
+  "another/package": {
+    "latest": "1.1.0",
+    "main": "1.1.0"
+  }
 }
 ```
 
@@ -68,7 +76,6 @@ jobs:
       - uses: wearethefoos/release-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          manifest-file: '.release-manifest.json'
 ```
 
 ### With Prereleases
@@ -94,24 +101,30 @@ jobs:
       - uses: wearethefoos/release-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          manifest-file: '.release-manifest.json'
           create-prereleases: true
+          # Add this label to a PR to create prereleases for it
           prerelease-label: 'Prerelease'
 ```
 
 ## How It Works
 
 1. The action checks if it's running on a pull request or the main branch
-2. For pull requests:
+1. For merges / commits to main:
+   - It gathers commit info to determine the version bump (see below)
+   - It creates a release PR with the changes to the package versions,
+     changelogs, and manifest.
+   - If the merge / commit was from a release PR, it creates releases and
+     outputs the versioning info.
+1. For pull requests:
    - If `create-prereleases` is false, it exits
-   - If the PR is tagged with the prerelease label, it creates a prerelease
-   - If the PR is tagged with "release-me", it creates a full release
-3. For each package in the manifest:
+   - If the PR is tagged with the prerelease label, it creates a prerelease and
+     outputs the versioning info.
+1. For each package in the manifest:
    - Gathers commits since the last merge to main
    - Parses conventional commit messages
    - Determines version bump based on commit types
    - Generates changelog
-4. Creates a release with:
+1. Creates a release with:
    - Updated package versions
    - Generated changelog
    - GitHub release and tags
