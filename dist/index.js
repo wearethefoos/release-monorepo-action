@@ -39831,7 +39831,12 @@ class GitHubService {
         this.releaseContext = this.getReleaseContext();
     }
     async onMainBranch() {
-        return this.releaseContext.headRef === 'main';
+        if (this.releaseContext.headRef === 'refs/heads/main') {
+            coreExports.debug('On main branch');
+            return true;
+        }
+        coreExports.debug(`On branch ${this.releaseContext.headRef}`);
+        return false;
     }
     async isDeletedReleaseBranch(target) {
         if (this.releaseContext.headRef !== `release-${target}`) {
@@ -40388,14 +40393,17 @@ class GitHubService {
         }
     }
     async wasManifestUpdatedInLastCommit(manifestFile, rootDir = '.') {
+        coreExports.debug(`Checking if manifest was updated in last commit`);
         try {
             const filePath = rootDir === '.' ? manifestFile : path__namespace.join(rootDir, manifestFile);
             const { data: commits } = await this.octokit.repos.listCommits({
                 owner: this.releaseContext.owner,
                 repo: this.releaseContext.repo,
+                branch: this.releaseContext.headRef,
                 per_page: 1
             });
             if (commits.length === 0) {
+                coreExports.debug('No commits found with the manifest file');
                 return false;
             }
             const latestCommit = commits[0];
@@ -40404,7 +40412,9 @@ class GitHubService {
                 repo: this.releaseContext.repo,
                 ref: latestCommit.sha
             });
-            return commit.files?.some((file) => file.filename === filePath) ?? false;
+            const manifestUpdated = commit.files?.some((file) => file.filename === filePath) ?? false;
+            coreExports.debug(`Manifest updated: ${manifestUpdated}`);
+            return manifestUpdated;
         }
         catch (error) {
             coreExports.warning(`Failed to check if manifest was updated: ${error}`);
@@ -40576,7 +40586,6 @@ async function run() {
             if (labels.includes('release-me')) {
                 coreExports.debug('Adding released label to PR');
                 await github.addLabel('released', githubExports.context.issue.number);
-                await github.removeLabel('release-me', githubExports.context.issue.number);
             }
             coreExports.info('Seems we are on an old release branch that does not exist anymore, nothing else to do here');
             coreExports.debug('Returning early: isDeletedReleaseBranch');
@@ -40719,6 +40728,10 @@ async function run() {
             coreExports.debug('Returning after creating release for PR');
             return;
         }
+        coreExports.debug(`On main branch: ${await github.onMainBranch()}`);
+        coreExports.debug(`Has release-me label: ${labels.includes('release-me')}`);
+        coreExports.debug(`Is pull request merged: ${await github.isPullRequestMerged()}`);
+        coreExports.debug(`Manifest updated in last commit: ${await github.wasManifestUpdatedInLastCommit(manifestFile, rootDir)}`);
         // Check if manifest was updated in last commit
         if ((await github.onMainBranch()) &&
             (await github.wasManifestUpdatedInLastCommit(manifestFile, rootDir))) {

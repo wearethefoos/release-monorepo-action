@@ -38,7 +38,6 @@ export async function run(): Promise<void> {
       if (labels.includes('release-me')) {
         core.debug('Adding released label to PR')
         await github.addLabel('released', context.issue.number)
-        await github.removeLabel('release-me', context.issue.number)
       }
 
       core.info(
@@ -224,6 +223,13 @@ export async function run(): Promise<void> {
       core.debug('Returning after creating release for PR')
       return
     }
+
+    core.debug(`On main branch: ${await github.onMainBranch()}`)
+    core.debug(`Has release-me label: ${labels.includes('release-me')}`)
+    core.debug(`Is pull request merged: ${await github.isPullRequestMerged()}`)
+    core.debug(
+      `Manifest updated in last commit: ${await github.wasManifestUpdatedInLastCommit(manifestFile, rootDir)}`
+    )
 
     // Check if manifest was updated in last commit
     if (

@@ -38,7 +38,13 @@ export class GitHubService {
   }
 
   public async onMainBranch(): Promise<boolean> {
-    return this.releaseContext.headRef === 'main'
+    if (this.releaseContext.headRef === 'refs/heads/main') {
+      core.debug('On main branch')
+      return true
+    }
+
+    core.debug(`On branch ${this.releaseContext.headRef}`)
+    return false
   }
 
   public async isDeletedReleaseBranch(target: string): Promise<boolean> {
@@ -718,16 +724,19 @@ export class GitHubService {
     manifestFile: string,
     rootDir: string = '.'
   ): Promise<boolean> {
+    core.debug(`Checking if manifest was updated in last commit`)
     try {
       const filePath =
         rootDir === '.' ? manifestFile : path.join(rootDir, manifestFile)
       const { data: commits } = await this.octokit.repos.listCommits({
         owner: this.releaseContext.owner,
         repo: this.releaseContext.repo,
+        branch: this.releaseContext.headRef,
         per_page: 1
       })
 
       if (commits.length === 0) {
+        core.debug('No commits found with the manifest file')
         return false
       }
 
@@ -738,7 +747,11 @@ export class GitHubService {
         ref: latestCommit.sha
       })
 
-      return commit.files?.some((file) => file.filename === filePath) ?? false
+      const manifestUpdated =
+        commit.files?.some((file) => file.filename === filePath) ?? false
+
+      core.debug(`Manifest updated: ${manifestUpdated}`)
+      return manifestUpdated
     } catch (error) {
       core.warning(`Failed to check if manifest was updated: ${error}`)
       return false
