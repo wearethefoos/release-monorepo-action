@@ -40065,18 +40065,16 @@ class GitHubService {
                 owner: this.releaseContext.owner,
                 repo: this.releaseContext.repo,
                 pull_number: existingPRs[0].number,
-                labels: existingPRs[0].labels
-                    .map((label) => label.name)
-                    .includes('release-me')
-                    ? existingPRs[0].labels.map((label) => label.name)
-                    : existingPRs[0].labels.map((label) => label.name).concat([label]),
                 title,
                 body
             });
+            if (!existingPRs[0].labels.map((label) => label.name).includes(label)) {
+                await this.addLabel(label, existingPRs[0].number);
+            }
         }
         else {
             // Create new PR
-            await this.octokit.pulls.create({
+            const newPr = await this.octokit.pulls.create({
                 owner: this.releaseContext.owner,
                 repo: this.releaseContext.repo,
                 title,
@@ -40085,6 +40083,7 @@ class GitHubService {
                 head: branchName,
                 base: 'main'
             });
+            await this.addLabel(label, newPr.data.number);
         }
     }
     async getMainSha() {
