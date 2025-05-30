@@ -77,8 +77,10 @@ jobs:
           if [ -z "$minor_release_branch_exists" ]; then
             git branch "$minor_release_branch" "$minor_release_tag"
             git push --set-upstream origin "$minor_release_branch"
+          else
+
           fi
 
-          git push --follow-tags
+          git push --tags --force
 
           echo "Pushed to major and minor tags and release branches"
