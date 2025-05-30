@@ -5,6 +5,7 @@
 ### 🐛 Fixes
 
 - adjust release PR labeling
+- adjust release PR labeling
 
 ## 2.0.0 (2025-05-30)
 
