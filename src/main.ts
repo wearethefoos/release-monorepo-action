@@ -42,7 +42,7 @@ export async function run(): Promise<void> {
       }
 
       core.info(
-        'Seems we are on an old release branch that does not exist anymore, nothing to do'
+        'Seems we are on an old release branch that does not exist anymore, nothing else to do here'
       )
 
       core.debug('Returning early: isDeletedReleaseBranch')
@@ -198,11 +198,14 @@ export async function run(): Promise<void> {
 
     // Check if this is a release PR with release-me tag
     if (labels.includes('release-me')) {
+      core.debug('Checking if this is a release PR with release-me tag')
       // Get the PR number from the commit or by versions
       let prNumber = await github.getPullRequestFromCommit(context.sha)
       if (!prNumber) {
         // Try to find PR by versions if commit lookup fails
+        core.debug('No PR number found, trying to find PR by versions')
         prNumber = await github.findReleasePRByVersions(manifest)
+        core.debug(`Found PR #${prNumber} by versions`)
       }
 
       if (prNumber) {

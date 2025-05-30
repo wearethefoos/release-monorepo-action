@@ -38847,6 +38847,11 @@ class GitHubService {
                 owner: this.releaseContext.owner,
                 repo: this.releaseContext.repo,
                 pull_number: existingPRs[0].number,
+                labels: existingPRs[0].labels
+                    .map((label) => label.name)
+                    .includes('release-me')
+                    ? existingPRs[0].labels.map((label) => label.name)
+                    : existingPRs[0].labels.map((label) => label.name).concat([label]),
                 title,
                 body
             });
@@ -39334,7 +39339,7 @@ async function run() {
                 await github.addLabel('released', githubExports.context.issue.number);
                 await github.removeLabel('release-me', githubExports.context.issue.number);
             }
-            coreExports.info('Seems we are on an old release branch that does not exist anymore, nothing to do');
+            coreExports.info('Seems we are on an old release branch that does not exist anymore, nothing else to do here');
             coreExports.debug('Returning early: isDeletedReleaseBranch');
             return;
         }
@@ -39454,11 +39459,14 @@ async function run() {
         }
         // Check if this is a release PR with release-me tag
         if (labels.includes('release-me')) {
+            coreExports.debug('Checking if this is a release PR with release-me tag');
             // Get the PR number from the commit or by versions
             let prNumber = await github.getPullRequestFromCommit(githubExports.context.sha);
             if (!prNumber) {
                 // Try to find PR by versions if commit lookup fails
+                coreExports.debug('No PR number found, trying to find PR by versions');
                 prNumber = await github.findReleasePRByVersions(manifest);
+                coreExports.debug(`Found PR #${prNumber} by versions`);
             }
             if (prNumber) {
                 coreExports.debug(`Creating release and adding label to PR #${prNumber}`);

@@ -722,7 +722,8 @@ describe('GitHubService', () => {
         repo: 'test-repo',
         pull_number: 123,
         title: 'chore: release packages/core@1.1.0',
-        body: expect.stringContaining('## Changes')
+        body: expect.stringContaining('## Changes'),
+        labels: ['release-me']
       })
     })
 

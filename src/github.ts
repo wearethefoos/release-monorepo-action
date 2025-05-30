@@ -310,6 +310,11 @@ export class GitHubService {
         owner: this.releaseContext.owner,
         repo: this.releaseContext.repo,
         pull_number: existingPRs[0].number,
+        labels: existingPRs[0].labels
+          .map((label) => label.name)
+          .includes('release-me')
+          ? existingPRs[0].labels.map((label) => label.name)
+          : existingPRs[0].labels.map((label) => label.name).concat([label]),
         title,
         body
       })
