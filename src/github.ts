@@ -37,6 +37,10 @@ export class GitHubService {
     this.releaseContext = this.getReleaseContext()
   }
 
+  public async onMainBranch(): Promise<boolean> {
+    return this.releaseContext.headRef === 'main'
+  }
+
   public async isDeletedReleaseBranch(target: string): Promise<boolean> {
     if (this.releaseContext.headRef !== `release-${target}`) {
       return false
@@ -124,6 +128,34 @@ export class GitHubService {
     })
 
     return pr.labels.map((label) => label.name)
+  }
+
+  getPullRequestNumberFromContext(): number | null {
+    if (
+      !this.releaseContext.isPullRequest ||
+      !this.releaseContext.pullRequestNumber
+    ) {
+      return null
+    }
+
+    return this.releaseContext.pullRequestNumber
+  }
+
+  async isPullRequestMerged(): Promise<boolean> {
+    if (
+      !this.releaseContext.isPullRequest ||
+      !this.releaseContext.pullRequestNumber
+    ) {
+      return false
+    }
+
+    const { data: pr } = await this.octokit.pulls.get({
+      owner: this.releaseContext.owner,
+      repo: this.releaseContext.repo,
+      pull_number: this.releaseContext.pullRequestNumber
+    })
+
+    return pr.merged
   }
 
   private generateReleasePRTitle(changes: PackageChanges[]): string {

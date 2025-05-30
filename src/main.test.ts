@@ -4,10 +4,12 @@ import * as fs from 'fs'
 import type { Mock } from 'vitest'
 
 vi.mock('@actions/core', () => ({
-  info: vi.fn(),
-  debug: (...args: unknown[]) => {
+  info: vi.fn().mockImplementation((...args: unknown[]) => {
+    console.log('[core.info]', ...args)
+  }),
+  debug: vi.fn().mockImplementation((...args: unknown[]) => {
     console.log('[core.debug]', ...args)
-  },
+  }),
   setOutput: vi.fn(),
   setFailed: vi.fn(),
   getInput: vi.fn()
@@ -35,7 +37,10 @@ const githubServiceMock = {
   findReleasePRByVersions: vi.fn(),
   isDeletedReleaseBranch: vi.fn(),
   getLatestRcVersion: vi.fn(),
-  createComment: vi.fn()
+  createComment: vi.fn(),
+  onMainBranch: vi.fn(),
+  isPullRequestMerged: vi.fn(),
+  getPullRequestNumberFromContext: vi.fn()
 }
 vi.mock('./github.js', () => ({
   GitHubService: vi.fn(() => githubServiceMock)
@@ -123,6 +128,7 @@ describe('main.ts', () => {
     )
     githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue(mockCommits)
     githubServiceMock.createReleasePullRequest.mockResolvedValue(undefined)
+    githubServiceMock.onMainBranch.mockResolvedValue(true)
     ;(core.getInput as Mock).mockImplementation((name: string) => {
       if (name === 'release-target') return 'canary'
       return ''
@@ -158,6 +164,7 @@ describe('main.ts', () => {
     githubServiceMock.updatePackageVersion.mockResolvedValue(undefined)
     githubServiceMock.createRelease.mockResolvedValue(undefined)
     githubServiceMock.createReleasePullRequest.mockResolvedValue(undefined)
+    githubServiceMock.onMainBranch.mockResolvedValue(false)
     await run()
     expect(core.info).toHaveBeenCalledWith(
       'This PR has already been released, skipping'
@@ -173,6 +180,9 @@ describe('main.ts', () => {
         sha: 'abc123'
       }
     ]
+    githubServiceMock.onMainBranch.mockResolvedValue(false)
+    githubServiceMock.isPullRequestMerged.mockResolvedValue(true)
+    githubServiceMock.getPullRequestNumberFromContext.mockReturnValue(123)
     githubServiceMock.getPullRequestLabels.mockResolvedValue(['release-me'])
     githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue(
       mockCommits
@@ -223,6 +233,7 @@ describe('main.ts', () => {
     githubServiceMock.getPullRequestFromCommit.mockResolvedValue(null)
     githubServiceMock.wasReleasePR.mockResolvedValue(false)
     githubServiceMock.createReleasePullRequest.mockResolvedValue(undefined)
+    githubServiceMock.onMainBranch.mockResolvedValue(true)
     ;(core.getInput as Mock).mockImplementation((name: string) => {
       if (name === 'release-target') return 'canary'
       return ''
@@ -351,7 +362,7 @@ describe('main.ts', () => {
         commit: {
           message: 'chore: release packages/core@1.1.0'
         },
-        sha: 'abc123'
+        sha: 'abc456'
       }
     ]
     githubServiceMock.getPullRequestLabels.mockResolvedValue(['release-me'])
@@ -379,7 +390,7 @@ describe('main.ts', () => {
     })
     await run()
     expect(githubServiceMock.createRelease).toHaveBeenCalled()
-    expect(githubServiceMock.addLabel).toHaveBeenCalledWith('released', 456)
+    expect(githubServiceMock.addLabel).toHaveBeenCalledWith('released', 123)
     expect(core.setOutput).toHaveBeenCalledWith('prerelease', false)
     expect(core.setOutput).toHaveBeenCalledWith(
       'versions',

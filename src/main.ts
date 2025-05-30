@@ -197,33 +197,43 @@ export async function run(): Promise<void> {
     }
 
     // Check if this is a release PR with release-me tag
-    if (labels.includes('release-me')) {
-      core.debug('Checking if this is a release PR with release-me tag')
-      // Get the PR number from the commit or by versions
-      let prNumber = await github.getPullRequestFromCommit(context.sha)
+    core.debug('Checking if this is a merged release PR with release-me tag')
+    if (labels.includes('release-me') && (await github.isPullRequestMerged())) {
+      core.debug('This is a merged release PR with release-me tag')
+      let prNumber = github.getPullRequestNumberFromContext()
+      core.debug(`PR number from context: ${prNumber}`)
+
       if (!prNumber) {
-        // Try to find PR by versions if commit lookup fails
+        prNumber = await github.getPullRequestFromCommit(context.sha)
+      }
+
+      if (!prNumber) {
         core.debug('No PR number found, trying to find PR by versions')
         prNumber = await github.findReleasePRByVersions(manifest)
         core.debug(`Found PR #${prNumber} by versions`)
       }
 
+      core.info(`Creating releases...`)
+      await github.createRelease(changes)
+
       if (prNumber) {
-        core.debug(`Creating release and adding label to PR #${prNumber}`)
-        // Create release and add released label
-        await github.createRelease(changes)
+        core.info(`Created releases for PR #${prNumber}`)
         await github.addLabel('released', prNumber)
-        core.debug('Returning after createRelease and addLabel')
-        return
       }
+
+      core.debug('Returning after creating release for PR')
+      return
     }
 
     // Check if manifest was updated in last commit
-    if (await github.wasManifestUpdatedInLastCommit(manifestFile, rootDir)) {
-      core.debug('Creating release for squashed merge')
-      // Create release for squashed merge
+    if (
+      (await github.onMainBranch()) &&
+      (await github.wasManifestUpdatedInLastCommit(manifestFile, rootDir))
+    ) {
+      core.info('Creating release for main branch')
+      core.debug('Assuming this is a squashed merge of a release PR')
       await github.createRelease(changes)
-      core.debug('Returning after createRelease for squashed merge')
+      core.debug('Returning after createRelease for main branch')
       return
     }
 

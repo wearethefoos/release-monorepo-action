@@ -39830,6 +39830,9 @@ class GitHubService {
         this.octokit = new Octokit({ auth: token });
         this.releaseContext = this.getReleaseContext();
     }
+    async onMainBranch() {
+        return this.releaseContext.headRef === 'main';
+    }
     async isDeletedReleaseBranch(target) {
         if (this.releaseContext.headRef !== `release-${target}`) {
             return false;
@@ -39902,6 +39905,25 @@ class GitHubService {
             pull_number: this.releaseContext.pullRequestNumber
         });
         return pr.labels.map((label) => label.name);
+    }
+    getPullRequestNumberFromContext() {
+        if (!this.releaseContext.isPullRequest ||
+            !this.releaseContext.pullRequestNumber) {
+            return null;
+        }
+        return this.releaseContext.pullRequestNumber;
+    }
+    async isPullRequestMerged() {
+        if (!this.releaseContext.isPullRequest ||
+            !this.releaseContext.pullRequestNumber) {
+            return false;
+        }
+        const { data: pr } = await this.octokit.pulls.get({
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo,
+            pull_number: this.releaseContext.pullRequestNumber
+        });
+        return pr.merged;
     }
     generateReleasePRTitle(changes) {
         if (changes.length === 1) {
@@ -40675,31 +40697,35 @@ async function run() {
             return;
         }
         // Check if this is a release PR with release-me tag
-        if (labels.includes('release-me')) {
-            coreExports.debug('Checking if this is a release PR with release-me tag');
-            // Get the PR number from the commit or by versions
-            let prNumber = await github.getPullRequestFromCommit(githubExports.context.sha);
+        coreExports.debug('Checking if this is a merged release PR with release-me tag');
+        if (labels.includes('release-me') && (await github.isPullRequestMerged())) {
+            coreExports.debug('This is a merged release PR with release-me tag');
+            let prNumber = github.getPullRequestNumberFromContext();
+            coreExports.debug(`PR number from context: ${prNumber}`);
             if (!prNumber) {
-                // Try to find PR by versions if commit lookup fails
+                prNumber = await github.getPullRequestFromCommit(githubExports.context.sha);
+            }
+            if (!prNumber) {
                 coreExports.debug('No PR number found, trying to find PR by versions');
                 prNumber = await github.findReleasePRByVersions(manifest);
                 coreExports.debug(`Found PR #${prNumber} by versions`);
             }
+            coreExports.info(`Creating releases...`);
+            await github.createRelease(changes);
             if (prNumber) {
-                coreExports.debug(`Creating release and adding label to PR #${prNumber}`);
-                // Create release and add released label
-                await github.createRelease(changes);
+                coreExports.info(`Created releases for PR #${prNumber}`);
                 await github.addLabel('released', prNumber);
-                coreExports.debug('Returning after createRelease and addLabel');
-                return;
             }
+            coreExports.debug('Returning after creating release for PR');
+            return;
         }
         // Check if manifest was updated in last commit
-        if (await github.wasManifestUpdatedInLastCommit(manifestFile, rootDir)) {
-            coreExports.debug('Creating release for squashed merge');
-            // Create release for squashed merge
+        if ((await github.onMainBranch()) &&
+            (await github.wasManifestUpdatedInLastCommit(manifestFile, rootDir))) {
+            coreExports.info('Creating release for main branch');
+            coreExports.debug('Assuming this is a squashed merge of a release PR');
             await github.createRelease(changes);
-            coreExports.debug('Returning after createRelease for squashed merge');
+            coreExports.debug('Returning after createRelease for main branch');
             return;
         }
         // Create release PR
