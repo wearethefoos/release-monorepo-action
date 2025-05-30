@@ -1,7 +1,7 @@
 name: 'Release Monorepo Action'
 description:
-  'Create semver releases and changelogs based on conventional commits. Supports
-  monorepos, prereleases, and multiple release targets.'
+  'Create releases, prereleases, and changelogs based on conventional commits to
+  multiple release targets.'
 author: wearethefoos
 
 branding:
