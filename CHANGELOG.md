@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.2 (2025-05-30)
+
+### 🐛 Fixes
+
+- correct check if we are on main head ref
+
 ## 2.0.1 (2025-05-30)
 
 ### 🐛 Fixes
