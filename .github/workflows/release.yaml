@@ -41,5 +41,18 @@ jobs:
       - name: Print Versions
         id: print-versions
         run: |
+          echo "releases-created: ${{ steps.release.outputs.releases-created }}"
           echo "version: ${{ steps.release.outputs.version }}"
           echo "prerelease: ${{ steps.release.outputs.prerelease }}"
+
+      - name: Push to major release branch
+        id: push-to-major-release-branch
+        if:
+          steps.release.outputs.releases-created == 'true' &&
+          steps.release.outputs.prerelease == 'false'
+        run: |
+          echo "Pushing to major release branch"
+          major_version=$(echo "${{ steps.release.outputs.version }}" | cut -d '.' -f 1)
+          git branch "releases/v$major_version" "v$major_version"
+          git push --set-upstream $git_remote "releases/v$major_version"
+          echo "Pushed to major release branch"
