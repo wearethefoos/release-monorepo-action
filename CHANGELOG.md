@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.0 (2025-05-30)
+
+### 🚀 Features
+
+- support prereleases via PR tags
+- **BREAKING CHANGE:** support multiple release targets (#16)
+
+### 🐛 Fixes
+
+- detect if running on a deleted release branch
+- multiline conventional commit parsing
+
 ## 1.5.0 (2025-05-26)
 
 ### 🚀 Features
