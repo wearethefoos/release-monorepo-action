@@ -5,6 +5,7 @@
 ### 🐛 Fixes
 
 - update action.yml for publishing
+- outputs and documentation
 
 ## 1.0.0 (2025-05-30)
 
