@@ -190,7 +190,7 @@ export async function run(): Promise<void> {
         core.info(`Failed to create PR comment: ${error}`)
       }
       core.debug('Creating release for prerelease')
-      await github.createRelease(changes)
+      await github.createRelease(changes, true)
       core.debug('Returning early: prerelease')
       return
     }

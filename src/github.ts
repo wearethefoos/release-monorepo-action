@@ -415,7 +415,10 @@ export class GitHubService {
       .join('\n\n')
   }
 
-  async createRelease(changes: PackageChanges[]): Promise<void> {
+  async createRelease(
+    changes: PackageChanges[],
+    prerelease: boolean = false
+  ): Promise<void> {
     // Set outputs based on number of packages
     if (changes.length === 1) {
       const change = changes[0]
@@ -430,8 +433,17 @@ export class GitHubService {
       core.setOutput('versions', JSON.stringify(versions))
     }
 
+    const manifest = await this.getManifestFromMain(
+      core.getInput('manifest-file') ?? '.release-manifest.json',
+      core.getInput('root-dir') ?? '.'
+    )
+
     for (const change of changes) {
-      const versionBase = `v${change.newVersion}`
+      const newVersion = prerelease
+        ? change.newVersion
+        : manifest[change.path][change.releaseTarget]
+
+      const versionBase = `v${newVersion}`
       const tagName =
         change.path === '.' ? versionBase : `${change.path}-${versionBase}`
       const releaseName =

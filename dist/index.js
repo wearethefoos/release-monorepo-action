@@ -40153,7 +40153,7 @@ class GitHubService {
         })
             .join('\n\n');
     }
-    async createRelease(changes) {
+    async createRelease(changes, prerelease = false) {
         // Set outputs based on number of packages
         if (changes.length === 1) {
             const change = changes[0];
@@ -40168,8 +40168,12 @@ class GitHubService {
             }));
             coreExports.setOutput('versions', JSON.stringify(versions));
         }
+        const manifest = await this.getManifestFromMain(coreExports.getInput('manifest-file') ?? '.release-manifest.json', coreExports.getInput('root-dir') ?? '.');
         for (const change of changes) {
-            const versionBase = `v${change.newVersion}`;
+            const newVersion = prerelease
+                ? change.newVersion
+                : manifest[change.path][change.releaseTarget];
+            const versionBase = `v${newVersion}`;
             const tagName = change.path === '.' ? versionBase : `${change.path}-${versionBase}`;
             const releaseName = change.path === '.' ? versionBase : `${change.path} ${versionBase}`;
             // Create tag
@@ -40701,7 +40705,7 @@ async function run() {
                 coreExports.info(`Failed to create PR comment: ${error}`);
             }
             coreExports.debug('Creating release for prerelease');
-            await github.createRelease(changes);
+            await github.createRelease(changes, true);
             coreExports.debug('Returning early: prerelease');
             return;
         }

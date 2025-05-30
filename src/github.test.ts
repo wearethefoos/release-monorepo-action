@@ -12,7 +12,8 @@ vi.mock('@actions/core', () => ({
   debug: vi.fn(),
   setOutput: vi.fn(),
   setFailed: vi.fn(),
-  warning: vi.fn()
+  warning: vi.fn(),
+  getInput: vi.fn()
 }))
 
 // Mock Octokit
@@ -528,6 +529,20 @@ describe('GitHubService', () => {
         data: { html_url: 'https://github.com/test/release' }
       }
       mockOctokit.repos.createRelease.mockResolvedValue(mockRelease)
+      mockOctokit.repos.getContent.mockResolvedValue({
+        data: {
+          content: Buffer.from(
+            JSON.stringify({
+              'packages/core': { latest: '1.0.0', main: '1.0.0' }
+            })
+          ).toString('base64')
+        }
+      })
+      vi.mocked(core.getInput).mockImplementationOnce((variable: string) => {
+        if (variable === 'manifest-file') return '.release-manifest.json'
+        if (variable === 'root-dir') return '.'
+        return ''
+      })
       const changes: PackageChanges[] = [
         {
           releaseTarget: 'main',
@@ -541,6 +556,13 @@ describe('GitHubService', () => {
               breaking: false,
               message: 'feat(core): add feature',
               hash: 'abc123'
+            },
+            {
+              type: 'chore',
+              scope: '',
+              breaking: false,
+              message: 'chore: release packages/core@1.1.0',
+              hash: 'abc456'
             }
           ],
           changelog: '## Changes\n\n- feat(core): add feature'
@@ -551,8 +573,8 @@ describe('GitHubService', () => {
       expect(mockOctokit.repos.createRelease).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
-        tag_name: 'packages/core-v1.1.0',
-        name: 'packages/core v1.1.0',
+        tag_name: 'packages/core-v1.0.0',
+        name: 'packages/core v1.0.0',
         body: '## Changes\n\n- feat(core): add feature',
         draft: false,
         prerelease: false
@@ -563,6 +585,16 @@ describe('GitHubService', () => {
       const mockRelease = {
         data: { html_url: 'https://github.com/test/release' }
       }
+      mockOctokit.repos.getContent.mockResolvedValue({
+        data: {
+          content: Buffer.from(
+            JSON.stringify({
+              'packages/core': { latest: '1.0.0', main: '1.0.0' },
+              'packages/utils': { latest: '2.0.0', main: '2.0.0' }
+            })
+          ).toString('base64')
+        }
+      })
       mockOctokit.repos.createRelease.mockResolvedValue(mockRelease)
       const changes: PackageChanges[] = [
         {
@@ -585,7 +617,7 @@ describe('GitHubService', () => {
           releaseTarget: 'main',
           path: 'packages/utils',
           currentVersion: '2.0.0',
-          newVersion: '2.1.0-rc.1',
+          newVersion: '2.1.0',
           commits: [
             {
               type: 'feat',
@@ -606,8 +638,8 @@ describe('GitHubService', () => {
       expect(mockOctokit.repos.createRelease).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
-        tag_name: 'packages/core-v1.1.0',
-        name: 'packages/core v1.1.0',
+        tag_name: 'packages/core-v1.0.0',
+        name: 'packages/core v1.0.0',
         body: '## Changes\n\n- feat(core): add feature',
         draft: false,
         prerelease: false
@@ -615,11 +647,11 @@ describe('GitHubService', () => {
       expect(mockOctokit.repos.createRelease).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
-        tag_name: 'packages/utils-v2.1.0-rc.1',
-        name: 'packages/utils v2.1.0-rc.1',
+        tag_name: 'packages/utils-v2.0.0',
+        name: 'packages/utils v2.0.0',
         body: '## Changes\n\n- feat(utils): add utility',
         draft: false,
-        prerelease: true
+        prerelease: false
       })
     })
 
