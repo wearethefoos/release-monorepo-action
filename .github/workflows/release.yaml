@@ -62,8 +62,8 @@ jobs:
           git tag "$major_release_tag" --force --annotate --message "Point $major_release_tag tag to ${{ steps.release.outputs.version }}"
           git tag "$minor_release_tag" --force --annotate --message "Point $minor_release_tag tag to ${{ steps.release.outputs.version }}"
 
-          major_release_branch_exists=$(git ls-remote --heads origin $major_release_branch)
-          minor_release_branch_exists=$(git ls-remote --heads origin $minor_release_branch)
+          major_release_branch_exists=$(git ls-remote --heads origin "$major_release_branch")
+          minor_release_branch_exists=$(git ls-remote --heads origin "$minor_release_branch")
 
           if [ -z "$major_release_branch_exists" ]; then
             git branch "$major_release_branch" "$major_release_tag"
