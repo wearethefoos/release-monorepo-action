@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.4 (2025-05-30)
+
+### 🐛 Fixes
+
+- stick to manifest versions when creating releases
+
 ## 2.0.2 (2025-05-30)
 
 ### 🐛 Fixes
