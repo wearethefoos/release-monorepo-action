@@ -8,6 +8,14 @@
 - adjust release PR labeling
 - clean up main and fix release PR handling
 
+## 2.0.2 (2025-05-30)
+
+### 🐛 Fixes
+
+- adjust release PR labeling
+- adjust release PR labeling
+- clean up main and fix release PR handling
+
 ## 2.0.0 (2025-05-30)
 
 ### 🚀 Features
