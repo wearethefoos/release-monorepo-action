@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.1 (2025-05-30)
+
+### 🐛 Fixes
+
+- adjust release PR labeling
+
 ## 2.0.0 (2025-05-30)
 
 ### 🚀 Features
