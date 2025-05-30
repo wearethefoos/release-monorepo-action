@@ -17,10 +17,11 @@ const CONVENTIONAL_COMMIT_TYPES = {
 
 export function parseConventionalCommit(message: string): ConventionalCommit {
   const conventionalCommitRegex =
-    /^(?<type>feat|fix|docs|style|refactor|perf|test|chore|revert|ci|build)(?:\((?<scope>[^)]+)\))?(?<breaking>!)?: (?<message>.+)$/
+    /^(?<type>feat|fix|docs|style|refactor|perf|test|chore|revert|ci|build)(?:\((?<scope>[^)]+)\))?(?<breaking>!)?: (?<message>.+)?$/m
   const match = message.match(conventionalCommitRegex)
 
   if (!match) {
+    console.debug(`Failed to parse commit message: ${message} ${match}`)
     return {
       type: 'chore',
       breaking: false,

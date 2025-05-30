@@ -29,6 +29,32 @@ describe('version.ts', () => {
       expect(commit.breaking).toBe(false)
       expect(commit.message).toBe('random commit message')
     })
+
+    it('parses squashed commits correctly', () => {
+      const message = `
+feat!: support multiple release targets (#16)
+
+* feat!: support multiple release targets
+
+* chore: fix lint setup
+
+* chore: fix commitlint setup
+
+* fix: do not create prerelease PRs
+
+* fix: do not break on PR write permissions
+
+* fix: process all prerelease packages
+
+* fix: monorepo prereleases
+
+* fix: create github prereleases
+`
+      const commit = parseConventionalCommit(message)
+      expect(commit.type).toBe('feat')
+      expect(commit.breaking).toBe(true)
+      expect(commit.message).toBe('support multiple release targets (#16)')
+    })
   })
 
   describe('determineVersionBump', () => {

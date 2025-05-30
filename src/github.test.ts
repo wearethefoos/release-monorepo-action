@@ -1045,7 +1045,7 @@ describe('GitHubService', () => {
       expect(mockOctokit.pulls.create).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
-        title: 'chore: release .@1.1.0',
+        title: 'chore: release 1.1.0',
         body: '## Changelog (1.0.0 -> 1.1.0)\n\n## Changes\n\n- feat: add feature',
         head: 'release-main',
         base: 'main',

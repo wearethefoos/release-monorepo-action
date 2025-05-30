@@ -136,10 +136,12 @@ export async function run(): Promise<void> {
 
       // If this is a prerelease, append rc.<number>
       if (isPrerelease) {
+        core.debug(`Getting latest RC version for ${packagePath}`)
         const rcNumber = await github.getLatestRcVersion(
           packagePath,
           newVersion
         )
+        core.debug(`Latest RC version for ${packagePath} is ${rcNumber}`)
         newVersion = `${newVersion}-rc.${rcNumber}`
         prereleaseVersionCommentLines.push(`- ${newVersion} for ${packagePath}`)
       }
@@ -159,6 +161,8 @@ export async function run(): Promise<void> {
       core.debug('Returning early: no version changes for any package')
       return
     }
+
+    core.debug(`Setting output for ${changes.length} packages`)
 
     if (changes.length === 1) {
       core.setOutput('version', changes[0].newVersion)
@@ -186,6 +190,7 @@ export async function run(): Promise<void> {
         core.warning(prereleaseVersionCommentLines.join('\n'))
         core.info(`Failed to create PR comment: ${error}`)
       }
+      core.debug('Creating release for prerelease')
       await github.createRelease(changes)
       core.debug('Returning early: prerelease')
       return

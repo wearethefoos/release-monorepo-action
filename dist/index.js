@@ -38507,9 +38507,10 @@ const CONVENTIONAL_COMMIT_TYPES = {
     build: 'none'
 };
 function parseConventionalCommit(message) {
-    const conventionalCommitRegex = /^(?<type>feat|fix|docs|style|refactor|perf|test|chore|revert|ci|build)(?:\((?<scope>[^)]+)\))?(?<breaking>!)?: (?<message>.+)$/;
+    const conventionalCommitRegex = /^(?<type>feat|fix|docs|style|refactor|perf|test|chore|revert|ci|build)(?:\((?<scope>[^)]+)\))?(?<breaking>!)?: (?<message>.+)?$/m;
     const match = message.match(conventionalCommitRegex);
     if (!match) {
+        console.debug(`Failed to parse commit message: ${message} ${match}`);
         return {
             type: 'chore',
             breaking: false,
@@ -38700,12 +38701,8 @@ class GitHubService {
     }
     async createReleasePullRequest(changes, label = 'release-me', manifestFile = '.release-manifest.json') {
         // Determine PR title and commit message
-        const title = changes.length === 1
-            ? `chore: release ${changes[0].path}@${changes[0].newVersion}`
-            : 'chore: release multiple packages';
-        const commitMessage = changes.length === 1
-            ? `chore: release ${changes[0].path}@${changes[0].newVersion}`
-            : 'chore: release multiple packages';
+        const title = this.generateReleasePRTitle(changes);
+        const commitMessage = title;
         // Create a new branch with the format 'release-<target>'
         const branchName = `release-${changes[0].releaseTarget}`;
         // Create the branch from main
@@ -38990,6 +38987,7 @@ class GitHubService {
             }
             // filter commits to only include those that would be relevant for a version bump
             const commits = response.data.commits.filter((commit) => {
+                coreExports.debug(commit.commit.message.split('\n')[0]);
                 const conventionalCommit = parseConventionalCommit(commit.commit.message);
                 return determineVersionBump([conventionalCommit]) !== 'none';
             });
@@ -39407,7 +39405,9 @@ async function run() {
             }
             // If this is a prerelease, append rc.<number>
             if (isPrerelease) {
+                coreExports.debug(`Getting latest RC version for ${packagePath}`);
                 const rcNumber = await github.getLatestRcVersion(packagePath, newVersion);
+                coreExports.debug(`Latest RC version for ${packagePath} is ${rcNumber}`);
                 newVersion = `${newVersion}-rc.${rcNumber}`;
                 prereleaseVersionCommentLines.push(`- ${newVersion} for ${packagePath}`);
             }
@@ -39425,6 +39425,7 @@ async function run() {
             coreExports.debug('Returning early: no version changes for any package');
             return;
         }
+        coreExports.debug(`Setting output for ${changes.length} packages`);
         if (changes.length === 1) {
             coreExports.setOutput('version', changes[0].newVersion);
         }
@@ -39446,6 +39447,7 @@ async function run() {
                 coreExports.warning(prereleaseVersionCommentLines.join('\n'));
                 coreExports.info(`Failed to create PR comment: ${error}`);
             }
+            coreExports.debug('Creating release for prerelease');
             await github.createRelease(changes);
             coreExports.debug('Returning early: prerelease');
             return;

@@ -145,15 +145,8 @@ export class GitHubService {
     manifestFile: string = '.release-manifest.json'
   ): Promise<void> {
     // Determine PR title and commit message
-    const title =
-      changes.length === 1
-        ? `chore: release ${changes[0].path}@${changes[0].newVersion}`
-        : 'chore: release multiple packages'
-
-    const commitMessage =
-      changes.length === 1
-        ? `chore: release ${changes[0].path}@${changes[0].newVersion}`
-        : 'chore: release multiple packages'
+    const title = this.generateReleasePRTitle(changes)
+    const commitMessage = title
 
     // Create a new branch with the format 'release-<target>'
     const branchName = `release-${changes[0].releaseTarget}`
@@ -479,6 +472,8 @@ export class GitHubService {
 
       // filter commits to only include those that would be relevant for a version bump
       const commits = response.data.commits.filter((commit) => {
+        core.debug(commit.commit.message.split('\n')[0])
+
         const conventionalCommit = parseConventionalCommit(
           commit.commit.message
         )
