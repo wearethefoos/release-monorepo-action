@@ -1,4 +1,4 @@
-name: 'Release Action'
+name: 'Release Monorepo Action'
 description:
   'Create semver releases and changelogs based on conventional commits. Supports
   monorepos, prereleases, and multiple release targets.'
