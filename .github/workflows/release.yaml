@@ -52,6 +52,10 @@ jobs:
           steps.release.outputs.prerelease == 'false'
         run: |
           echo "Pushing to major and minor release tags and branches"
+
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
           major_version=$(echo "${{ steps.release.outputs.version }}" | cut -d '.' -f 1)
           minor_version=$(echo "${{ steps.release.outputs.version }}" | cut -d '.' -f 2)
           major_release_tag="v$major_version"
