@@ -36,6 +36,8 @@ inputs:
     default: 'main'
 
 outputs:
+  releases-created:
+    description: 'Whether one or more releases were created'
   version:
     description: 'The version that was released'
   versions:
