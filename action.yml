@@ -1,10 +1,12 @@
-name: 'Release'
-description: 'Create semver releases based on conventional commits'
+name: 'Release Action'
+description:
+  'Create semver releases and changelogs based on conventional commits. Supports
+  monorepos, prereleases, and multiple release targets.'
 author: wearethefoos
 
 branding:
-  icon: heart
-  color: red
+  icon: package
+  color: blue
 
 inputs:
   token:
@@ -18,7 +20,7 @@ inputs:
     description: 'The manifest file to use, relative to the root-dir'
     required: true
     default: '.release-manifest.json'
-  create-prerelease:
+  create-prereleases:
     description: 'Whether to create prereleases from pull requests'
     required: false
     default: 'false'
