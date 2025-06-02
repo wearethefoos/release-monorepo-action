@@ -40097,6 +40097,7 @@ class GitHubService {
             });
             if (!existingPRs[0].labels.map((label) => label.name).includes(label)) {
                 await this.addLabel(label, existingPRs[0].number);
+                await this.addLabel(`release-target:${changes[0].releaseTarget}`, existingPRs[0].number);
             }
         }
         else {
@@ -40105,12 +40106,13 @@ class GitHubService {
                 owner: this.releaseContext.owner,
                 repo: this.releaseContext.repo,
                 title,
-                labels: [label],
+                labels: [label, `release-target:${changes[0].releaseTarget}`],
                 body,
                 head: branchName,
                 base: 'main'
             });
             await this.addLabel(label, newPr.data.number);
+            await this.addLabel(`release-target:${changes[0].releaseTarget}`, newPr.data.number);
         }
     }
     async getMainSha() {
@@ -40396,7 +40398,7 @@ class GitHubService {
             return {};
         }
     }
-    async wasManifestUpdatedInLastCommit(manifestFile, rootDir = '.') {
+    async wasManifestUpdatedInLastCommit(manifestFile, releaseTarget, rootDir = '.') {
         coreExports.debug(`Checking if manifest was updated in last commit`);
         try {
             const filePath = rootDir === '.' ? manifestFile : path__namespace.join(rootDir, manifestFile);
@@ -40416,7 +40418,8 @@ class GitHubService {
                 repo: this.releaseContext.repo,
                 ref: latestCommit.sha
             });
-            const manifestUpdated = commit.files?.some((file) => file.filename === filePath) ?? false;
+            const manifestUpdated = commit.files?.some((file) => file.filename === filePath &&
+                file.patch?.includes(`"${releaseTarget}":`)) ?? false;
             coreExports.debug(`Manifest updated: ${manifestUpdated}`);
             return manifestUpdated;
         }
@@ -40590,6 +40593,13 @@ async function run() {
         }
         const github = new GitHubService(token);
         const labels = await github.getPullRequestLabels();
+        if (labels.length > 0 &&
+            !labels.includes(`release-target:${releaseTarget}`) &&
+            !labels.includes(prereleaseLabel)) {
+            coreExports.info(`This PR does not have the release-target label ${releaseTarget}, skipping`);
+            coreExports.debug('Returning early: PR does not have release-target label');
+            return;
+        }
         const isDeletedReleaseBranch = await github.isDeletedReleaseBranch(releaseTarget);
         if (isDeletedReleaseBranch) {
             if (labels.includes('release-me')) {
@@ -40740,10 +40750,10 @@ async function run() {
         coreExports.debug(`On main branch: ${await github.onMainBranch()}`);
         coreExports.debug(`Has release-me label: ${labels.includes('release-me')}`);
         coreExports.debug(`Is pull request merged: ${await github.isPullRequestMerged()}`);
-        coreExports.debug(`Manifest updated in last commit: ${await github.wasManifestUpdatedInLastCommit(manifestFile, rootDir)}`);
+        coreExports.debug(`Manifest updated in last commit: ${await github.wasManifestUpdatedInLastCommit(manifestFile, releaseTarget, rootDir)}`);
         // Check if manifest was updated in last commit
         if ((await github.onMainBranch()) &&
-            (await github.wasManifestUpdatedInLastCommit(manifestFile, rootDir))) {
+            (await github.wasManifestUpdatedInLastCommit(manifestFile, releaseTarget, rootDir))) {
             coreExports.info('Creating release for main branch');
             coreExports.debug('Assuming this is a squashed merge of a release PR');
             await github.createRelease(changes);

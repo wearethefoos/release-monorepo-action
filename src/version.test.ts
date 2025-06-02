@@ -4,7 +4,7 @@ import {
   determineVersionBump,
   calculateNewVersion,
   generateChangelog
-} from './version.js'
+} from './version'
 
 describe('version.ts', () => {
   describe('parseConventionalCommit', () => {

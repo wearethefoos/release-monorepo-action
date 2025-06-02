@@ -102,7 +102,10 @@ describe('main.ts', () => {
 
   it('should handle prerelease PRs correctly', async () => {
     const mockCommits = ['feat(core): add new feature', 'fix(utils): fix bug']
-    githubServiceMock.getPullRequestLabels.mockResolvedValue(['Prerelease'])
+    githubServiceMock.getPullRequestLabels.mockResolvedValue([
+      'Prerelease',
+      'release-target:canary'
+    ])
     githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue(
       mockCommits
     )
@@ -158,7 +161,10 @@ describe('main.ts', () => {
   })
 
   it('should skip if PR is labeled with released', async () => {
-    githubServiceMock.getPullRequestLabels.mockResolvedValue(['released'])
+    githubServiceMock.getPullRequestLabels.mockResolvedValue([
+      'released',
+      'release-target:main'
+    ])
     githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue([])
     githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue([])
     githubServiceMock.updatePackageVersion.mockResolvedValue(undefined)
@@ -183,7 +189,10 @@ describe('main.ts', () => {
     githubServiceMock.onMainBranch.mockResolvedValue(false)
     githubServiceMock.isPullRequestMerged.mockResolvedValue(true)
     githubServiceMock.getPullRequestNumberFromContext.mockReturnValue(123)
-    githubServiceMock.getPullRequestLabels.mockResolvedValue(['release-me'])
+    githubServiceMock.getPullRequestLabels.mockResolvedValue([
+      'release-me',
+      'release-target:canary'
+    ])
     githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue(
       mockCommits
     )
@@ -365,7 +374,10 @@ describe('main.ts', () => {
         sha: 'abc456'
       }
     ]
-    githubServiceMock.getPullRequestLabels.mockResolvedValue(['release-me'])
+    githubServiceMock.getPullRequestLabels.mockResolvedValue([
+      'release-me',
+      'release-target:canary'
+    ])
     githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue(
       mockCommits
     )
@@ -411,7 +423,10 @@ describe('main.ts', () => {
 
   it('should handle prerelease PRs with RC versions', async () => {
     const mockCommits = ['feat(core): add new feature', 'fix(utils): fix bug']
-    githubServiceMock.getPullRequestLabels.mockResolvedValue(['Prerelease'])
+    githubServiceMock.getPullRequestLabels.mockResolvedValue([
+      'Prerelease',
+      'release-target:canary'
+    ])
     githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue(
       mockCommits
     )

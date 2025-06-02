@@ -1,12 +1,12 @@
 import * as core from '@actions/core'
 import { context } from '@actions/github'
-import { GitHubService } from './github.js'
-import { PackageChanges } from './types.js'
+import { GitHubService } from './github'
+import { PackageChanges } from './types'
 import {
   parseConventionalCommit,
   determineVersionBump,
   generateChangelog
-} from './version.js'
+} from './version'
 
 /**
  * The main function for the action.
@@ -36,6 +36,18 @@ export async function run(): Promise<void> {
 
     const github = new GitHubService(token)
     const labels = await github.getPullRequestLabels()
+
+    if (
+      labels.length > 0 &&
+      !labels.includes(`release-target:${releaseTarget}`) &&
+      !labels.includes(prereleaseLabel)
+    ) {
+      core.info(
+        `This PR does not have the release-target label ${releaseTarget}, skipping`
+      )
+      core.debug('Returning early: PR does not have release-target label')
+      return
+    }
 
     const isDeletedReleaseBranch =
       await github.isDeletedReleaseBranch(releaseTarget)
@@ -236,13 +248,17 @@ export async function run(): Promise<void> {
     core.debug(`Has release-me label: ${labels.includes('release-me')}`)
     core.debug(`Is pull request merged: ${await github.isPullRequestMerged()}`)
     core.debug(
-      `Manifest updated in last commit: ${await github.wasManifestUpdatedInLastCommit(manifestFile, rootDir)}`
+      `Manifest updated in last commit: ${await github.wasManifestUpdatedInLastCommit(manifestFile, releaseTarget, rootDir)}`
     )
 
     // Check if manifest was updated in last commit
     if (
       (await github.onMainBranch()) &&
-      (await github.wasManifestUpdatedInLastCommit(manifestFile, rootDir))
+      (await github.wasManifestUpdatedInLastCommit(
+        manifestFile,
+        releaseTarget,
+        rootDir
+      ))
     ) {
       core.info('Creating release for main branch')
       core.debug('Assuming this is a squashed merge of a release PR')

@@ -1,6 +1,6 @@
-import { Octokit } from '@octokit/rest'
 import { context } from '@actions/github'
 import * as core from '@actions/core'
+import { Octokit } from '@octokit/rest'
 import {
   ReleaseContext,
   PackageChanges,
@@ -354,6 +354,10 @@ export class GitHubService {
 
       if (!existingPRs[0].labels.map((label) => label.name).includes(label)) {
         await this.addLabel(label, existingPRs[0].number)
+        await this.addLabel(
+          `release-target:${changes[0].releaseTarget}`,
+          existingPRs[0].number
+        )
       }
     } else {
       // Create new PR
@@ -361,13 +365,17 @@ export class GitHubService {
         owner: this.releaseContext.owner,
         repo: this.releaseContext.repo,
         title,
-        labels: [label],
+        labels: [label, `release-target:${changes[0].releaseTarget}`],
         body,
         head: branchName,
         base: 'main'
       })
 
       await this.addLabel(label, newPr.data.number)
+      await this.addLabel(
+        `release-target:${changes[0].releaseTarget}`,
+        newPr.data.number
+      )
     }
   }
 
@@ -734,6 +742,7 @@ export class GitHubService {
 
   async wasManifestUpdatedInLastCommit(
     manifestFile: string,
+    releaseTarget: string,
     rootDir: string = '.'
   ): Promise<boolean> {
     core.debug(`Checking if manifest was updated in last commit`)
@@ -760,7 +769,11 @@ export class GitHubService {
       })
 
       const manifestUpdated =
-        commit.files?.some((file) => file.filename === filePath) ?? false
+        commit.files?.some(
+          (file) =>
+            file.filename === filePath &&
+            file.patch?.includes(`"${releaseTarget}":`)
+        ) ?? false
 
       core.debug(`Manifest updated: ${manifestUpdated}`)
       return manifestUpdated

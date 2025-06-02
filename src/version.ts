@@ -1,4 +1,4 @@
-import { VersionBump, ConventionalCommit } from './types.js'
+import { VersionBump, ConventionalCommit } from './types'
 import semver from 'semver'
 
 const CONVENTIONAL_COMMIT_TYPES = {

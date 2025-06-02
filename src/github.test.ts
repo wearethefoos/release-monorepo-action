@@ -1,7 +1,7 @@
 import { context } from '@actions/github'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { GitHubService } from './github'
-import { PackageChanges } from './types.js'
+import { PackageChanges } from './types'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as core from '@actions/core'
@@ -838,7 +838,7 @@ describe('GitHubService', () => {
         body: '## packages/core Changelog (1.0.0 -> 1.1.0)\n\n## Changes\n\n- feat(core): add feature',
         head: 'release-main',
         base: 'main',
-        labels: ['release-me']
+        labels: ['release-me', 'release-target:main']
       })
     })
 
@@ -993,7 +993,7 @@ describe('GitHubService', () => {
         body: '## packages/core Changelog (1.0.0 -> 1.1.0)\n\n## Changes\n\n- feat(core): add feature',
         head: 'release-main',
         base: 'main',
-        labels: ['release-me']
+        labels: ['release-me', 'release-target:main']
       })
     })
 
@@ -1081,7 +1081,7 @@ describe('GitHubService', () => {
         body: '## Changelog (1.0.0 -> 1.1.0)\n\n## Changes\n\n- feat: add feature',
         head: 'release-main',
         base: 'main',
-        labels: ['release-me']
+        labels: ['release-me', 'release-target:main']
       })
 
       // Verify manifest blob was created
@@ -1180,7 +1180,7 @@ describe('GitHubService', () => {
         title: 'chore: release packages/core@1.1.0',
         body: '## packages/core Changelog (1.0.0 -> 1.1.0)\n\n## Changes\n\n- feat(core): add feature',
         head: 'release-main',
-        labels: ['release-me'],
+        labels: ['release-me', 'release-target:main'],
         base: 'main'
       })
 
@@ -1590,12 +1590,15 @@ describe('GitHubService', () => {
       })
       mockOctokit.repos.getCommit.mockResolvedValue({
         data: {
-          files: [{ filename: '.release-manifest.json' }]
+          files: [
+            { filename: '.release-manifest.json', patch: '"main": "1.0.0"' }
+          ]
         }
       })
 
       const result = await githubService.wasManifestUpdatedInLastCommit(
-        '.release-manifest.json'
+        '.release-manifest.json',
+        'main'
       )
       expect(result).toBe(true)
     })
@@ -1606,12 +1609,16 @@ describe('GitHubService', () => {
       })
       mockOctokit.repos.getCommit.mockResolvedValue({
         data: {
-          files: [{ filename: 'other.txt' }]
+          files: [
+            { filename: 'other.txt' },
+            { filename: '.release-manifest.json', patch: '"canary": "1.0.0"' }
+          ]
         }
       })
 
       const result = await githubService.wasManifestUpdatedInLastCommit(
-        '.release-manifest.json'
+        '.release-manifest.json',
+        'main'
       )
       expect(result).toBe(false)
     })
@@ -1622,7 +1629,8 @@ describe('GitHubService', () => {
       })
 
       const result = await githubService.wasManifestUpdatedInLastCommit(
-        '.release-manifest.json'
+        '.release-manifest.json',
+        'main'
       )
       expect(result).toBe(false)
     })
@@ -1631,7 +1639,8 @@ describe('GitHubService', () => {
       mockOctokit.repos.listCommits.mockRejectedValue(new Error('API Error'))
 
       const result = await githubService.wasManifestUpdatedInLastCommit(
-        '.release-manifest.json'
+        '.release-manifest.json',
+        'main'
       )
       expect(result).toBe(false)
     })
@@ -1642,12 +1651,18 @@ describe('GitHubService', () => {
       })
       mockOctokit.repos.getCommit.mockResolvedValue({
         data: {
-          files: [{ filename: 'packages/core/.release-manifest.json' }]
+          files: [
+            {
+              filename: 'packages/core/.release-manifest.json',
+              patch: '"main": "1.0.0"'
+            }
+          ]
         }
       })
 
       const result = await githubService.wasManifestUpdatedInLastCommit(
         '.release-manifest.json',
+        'main',
         'packages/core'
       )
       expect(result).toBe(true)
