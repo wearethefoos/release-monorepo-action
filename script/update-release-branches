@@ -1,0 +1,36 @@
+#!/bin/bash
+
+set -e
+
+version=$1
+
+if [ -z "$version" ]; then
+	echo "Usage: $0 <version>"
+	echo "Example: $0 1.0.2"
+	exit 1
+fi
+
+echo "Pushing to major and minor release tags and branches"
+
+git config --global user.email "github-actions[bot]@users.noreply.github.com"
+git config --global user.name "github-actions[bot]"
+
+major_version=$(echo "$version" | cut -d '.' -f 1)
+minor_version=$(echo "$version" | cut -d '.' -f 2)
+major_release_tag="v$major_version"
+minor_release_tag="v$major_version.$minor_version"
+major_release_branch="releases/$major_release_tag"
+minor_release_branch="releases/$minor_release_tag"
+
+git tag "$major_release_tag" --force --annotate --message "Point $major_release_tag tag to $version"
+git tag "$minor_release_tag" --force --annotate --message "Point $minor_release_tag tag to $version"
+
+git branch -f "$major_release_branch" "$major_release_tag"
+git push -f --set-upstream origin "$major_release_branch"
+
+git branch -f "$minor_release_branch" "$minor_release_tag"
+git push -f --set-upstream origin "$minor_release_branch"
+
+git push -f --tags
+
+echo "Pushed to major and minor tags and release branches"
