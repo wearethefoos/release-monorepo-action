@@ -173,7 +173,7 @@ export class GitHubService {
         return `chore: release ${change.path}@${change.newVersion}`
       }
     } else {
-      return 'chore: release main'
+      return `chore: release ${changes[0].releaseTarget}`
     }
   }
 
@@ -851,7 +851,8 @@ export class GitHubService {
   }
 
   async findReleasePRByVersions(
-    manifest: PackageManifest
+    manifest: PackageManifest,
+    releaseTarget: string
   ): Promise<number | null> {
     try {
       // Get all closed PRs with release-me label
@@ -859,7 +860,7 @@ export class GitHubService {
         owner: this.releaseContext.owner,
         repo: this.releaseContext.repo,
         state: 'closed',
-        labels: ['release-me'],
+        labels: ['release-me', `release-target:${releaseTarget}`],
         sort: 'updated',
         direction: 'desc',
         per_page: 10 // Look at the 10 most recent ones

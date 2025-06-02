@@ -227,7 +227,7 @@ export async function run(): Promise<void> {
 
       if (!prNumber) {
         core.debug('No PR number found, trying to find PR by versions')
-        prNumber = await github.findReleasePRByVersions(manifest)
+        prNumber = await github.findReleasePRByVersions(manifest, releaseTarget)
         core.debug(`Found PR #${prNumber} by versions`)
       }
 
