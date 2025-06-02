@@ -1,6 +1,6 @@
 {
   "name": "release-action",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "author": "@wearethefoos",
   "description": "GitHub Action for creating semver releases based on conventional commits",
   "main": "dist/index.js",
