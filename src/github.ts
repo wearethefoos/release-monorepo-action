@@ -189,24 +189,8 @@ export class GitHubService {
     // Create a new branch with the format 'release-<target>'
     const branchName = `release-${changes[0].releaseTarget}`
 
-    // Create the branch from main
-    try {
-      await this.octokit.git.createRef({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        ref: `refs/heads/${branchName}`,
-        sha: await this.getMainSha()
-      })
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message.includes('Reference already exists')
-      ) {
-        core.info('Branch already exists, skipping creation')
-      } else {
-        throw error
-      }
-    }
+    // Get the current main branch SHA
+    const mainSha = await this.getMainSha()
 
     // Update package versions and changelogs locally
     const treeItems = []
@@ -293,44 +277,48 @@ export class GitHubService {
       sha: manifestBlob.sha
     })
 
-    // Create a tree with the updated files
+    // Create a tree with the updated files, based on main
     const { data: tree } = await this.octokit.git.createTree({
       owner: this.releaseContext.owner,
       repo: this.releaseContext.repo,
-      base_tree: (
-        await this.octokit.git.getRef({
-          owner: this.releaseContext.owner,
-          repo: this.releaseContext.repo,
-          ref: `heads/${branchName}`
-        })
-      ).data.object.sha,
+      base_tree: mainSha,
       tree: treeItems
     })
 
-    // Create a commit with the tree
+    // Create a commit with the tree, based on main
     const { data: commit } = await this.octokit.git.createCommit({
       owner: this.releaseContext.owner,
       repo: this.releaseContext.repo,
       message: commitMessage,
       tree: tree.sha,
-      parents: [
-        (
-          await this.octokit.git.getRef({
-            owner: this.releaseContext.owner,
-            repo: this.releaseContext.repo,
-            ref: `heads/${branchName}`
-          })
-        ).data.object.sha
-      ]
+      parents: [mainSha]
     })
 
-    // Update the branch reference
-    await this.octokit.git.updateRef({
-      owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo,
-      ref: `heads/${branchName}`,
-      sha: commit.sha
-    })
+    // Create or update the branch reference
+    try {
+      await this.octokit.git.createRef({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        ref: `refs/heads/${branchName}`,
+        sha: commit.sha
+      })
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes('Reference already exists')
+      ) {
+        // Update existing branch
+        await this.octokit.git.updateRef({
+          owner: this.releaseContext.owner,
+          repo: this.releaseContext.repo,
+          ref: `heads/${branchName}`,
+          sha: commit.sha,
+          force: true
+        })
+      } else {
+        throw error
+      }
+    }
 
     // Create or update the PR
     const { data: existingPRs } = await this.octokit.pulls.list({
