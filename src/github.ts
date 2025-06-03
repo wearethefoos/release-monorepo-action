@@ -325,6 +325,147 @@ export class GitHubService {
       owner: this.releaseContext.owner,
       repo: this.releaseContext.repo,
       state: 'open',
+      labels: [`release-target:${changes[0].releaseTarget}`],
+      head: `${this.releaseContext.owner}:${branchName}`
+    })
+
+    const body = this.generatePullRequestBody(changes)
+
+    if (existingPRs.length > 0) {
+      // Update existing PR
+      await this.octokit.pulls.update({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        pull_number: existingPRs[0].number,
+        title,
+        body
+      })
+
+      if (!existingPRs[0].labels.map((label) => label.name).includes(label)) {
+        await this.addLabel(label, existingPRs[0].number)
+        await this.addLabel(
+          `release-target:${changes[0].releaseTarget}`,
+          existingPRs[0].number
+        )
+      }
+    } else {
+      // Create new PR
+      const newPr = await this.octokit.pulls.create({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        title,
+        labels: [label, `release-target:${changes[0].releaseTarget}`],
+        body,
+        head: branchName,
+        base: 'main'
+      })
+
+      await this.addLabel(label, newPr.data.number)
+      await this.addLabel(
+        `release-target:${changes[0].releaseTarget}`,
+        newPr.data.number
+      )
+    }
+  }
+
+  private generateVersionBumpPRTitle(changes: PackageChanges[]): string {
+    if (changes.length === 1) {
+      const change = changes[0]
+      return `chore: bump ${change.releaseTarget} to ${change.path}@${change.newVersion}`
+    } else {
+      return `chore: bump ${changes[0].releaseTarget} to latest`
+    }
+  }
+
+  async createVersionBumpPullRequest(
+    changes: PackageChanges[],
+    label: string = 'release-me',
+    manifestFile: string = '.release-manifest.json'
+  ): Promise<void> {
+    // Determine PR title and commit message
+    const title = this.generateVersionBumpPRTitle(changes)
+    const commitMessage = title
+
+    // Create a new branch with the format 'release-<target>'
+    const branchName = `release-${changes[0].releaseTarget}`
+
+    // Get the current main branch SHA
+    const mainSha = await this.getMainSha()
+
+    // Update package versions and changelogs locally
+    const treeItems = []
+
+    // Update the release manifest
+    const manifestPath = manifestFile
+
+    const manifest = await this.getManifestFromMain(
+      manifestFile,
+      core.getInput('root-dir') ?? '.'
+    )
+    await this.updateManifest(manifest, changes, changes[0].releaseTarget)
+    const updatedManifestContent = JSON.stringify(manifest, null, 2) + '\n'
+    const { data: manifestBlob } = await this.octokit.git.createBlob({
+      owner: this.releaseContext.owner,
+      repo: this.releaseContext.repo,
+      content: updatedManifestContent,
+      encoding: 'utf-8'
+    })
+    treeItems.push({
+      path: manifestPath,
+      mode: '100644' as const,
+      type: 'blob' as const,
+      sha: manifestBlob.sha
+    })
+
+    // Create a tree with the updated files, based on main
+    const { data: tree } = await this.octokit.git.createTree({
+      owner: this.releaseContext.owner,
+      repo: this.releaseContext.repo,
+      base_tree: mainSha,
+      tree: treeItems
+    })
+
+    // Create a commit with the tree, based on main
+    const { data: commit } = await this.octokit.git.createCommit({
+      owner: this.releaseContext.owner,
+      repo: this.releaseContext.repo,
+      message: commitMessage,
+      tree: tree.sha,
+      parents: [mainSha]
+    })
+
+    // Create or update the branch reference
+    try {
+      await this.octokit.git.createRef({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        ref: `refs/heads/${branchName}`,
+        sha: commit.sha
+      })
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes('Reference already exists')
+      ) {
+        // Update existing branch
+        await this.octokit.git.updateRef({
+          owner: this.releaseContext.owner,
+          repo: this.releaseContext.repo,
+          ref: `heads/${branchName}`,
+          sha: commit.sha,
+          force: true
+        })
+      } else {
+        throw error
+      }
+    }
+
+    // Create or update the PR
+    const { data: existingPRs } = await this.octokit.pulls.list({
+      owner: this.releaseContext.owner,
+      repo: this.releaseContext.repo,
+      state: 'open',
+      labels: [`release-target:${changes[0].releaseTarget}`],
       head: `${this.releaseContext.owner}:${branchName}`
     })
 
@@ -935,5 +1076,25 @@ export class GitHubService {
         manifest[change.path][releaseTarget] = change.newVersion
       }
     }
+  }
+
+  getReleaseTargetToLatestChanges(
+    manifest: PackageManifest,
+    releaseTarget: string
+  ): PackageChanges[] {
+    const changes: PackageChanges[] = []
+    for (const [path, versions] of Object.entries(manifest)) {
+      if (versions[releaseTarget] !== versions.latest) {
+        changes.push({
+          path,
+          currentVersion: versions[releaseTarget],
+          newVersion: versions.latest,
+          commits: [],
+          changelog: `Bumped ${releaseTarget} to ${versions.latest}`,
+          releaseTarget: releaseTarget
+        })
+      }
+    }
+    return changes
   }
 }

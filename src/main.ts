@@ -36,12 +36,12 @@ export async function run(): Promise<void> {
 
     const github = new GitHubService(token)
     const labels = await github.getPullRequestLabels()
+    const isReleasePR =
+      (labels.includes('release-me') || labels.includes('released')) &&
+      labels.includes(`release-target:${releaseTarget}`)
+    const isPreReleasePR = labels.includes(prereleaseLabel)
 
-    if (
-      labels.length > 0 &&
-      !labels.includes(`release-target:${releaseTarget}`) &&
-      !labels.includes(prereleaseLabel)
-    ) {
+    if (labels.length > 0 && !isReleasePR && !isPreReleasePR) {
       core.info(
         `This PR does not have the release-target label ${releaseTarget}, skipping`
       )
@@ -107,14 +107,50 @@ export async function run(): Promise<void> {
 
     // Get all commits since last release
     const allCommits = await github.getAllCommitsSinceLastRelease()
-    if (allCommits.length === 0) {
+    if (allCommits.length === 0 && !isReleasePR) {
       core.info('No changes requiring version updates found')
+
+      if (isPrerelease) {
+        core.info('Skipping creating release PR for prerelease.')
+        core.debug('Returning early: no commits since last release')
+        return
+      }
+
+      // Check if the release target is not the latest version
+      const changesToLatest = github.getReleaseTargetToLatestChanges(
+        manifest,
+        releaseTarget
+      )
+
+      if (changesToLatest.length > 0) {
+        core.info(
+          `Updating release target to latest for ${releaseTarget} in ${changesToLatest.length} packages`
+        )
+        await github.createVersionBumpPullRequest(changesToLatest, 'release-me')
+        core.setOutput('releases-created', true)
+        if (changesToLatest.length === 1) {
+          core.setOutput('version', changesToLatest[0].newVersion)
+        }
+        core.setOutput(
+          'versions',
+          JSON.stringify(
+            changesToLatest.map((c) => ({
+              path: c.path,
+              target: c.releaseTarget,
+              version: c.newVersion
+            }))
+          )
+        )
+        core.debug('Returning early: bumped release target to latest')
+        return
+      }
+
       core.debug('Returning early: no commits since last release')
       return
     }
 
     // Calculate version changes for each package
-    const changes: PackageChanges[] = []
+    let changes: PackageChanges[] = []
     const prereleaseVersionCommentLines: string[] = isPrerelease
       ? ['ℹ️ Created prereleases for the following packages:', '']
       : []
@@ -173,6 +209,19 @@ export async function run(): Promise<void> {
       })
     }
 
+    let isVersionBumpPR = false
+
+    if (changes.length === 0) {
+      if (isReleasePR) {
+        changes = github.getReleaseTargetToLatestChanges(
+          manifest,
+          releaseTarget
+        )
+
+        isVersionBumpPR = changes.length > 0
+      }
+    }
+
     if (changes.length === 0) {
       core.info('No changes requiring version updates found')
       core.debug('Returning early: no version changes for any package')
@@ -216,7 +265,7 @@ export async function run(): Promise<void> {
 
     // Check if this is a release PR with release-me tag
     core.debug('Checking if this is a merged release PR with release-me tag')
-    if (labels.includes('release-me') && (await github.isPullRequestMerged())) {
+    if (isReleasePR && (await github.isPullRequestMerged())) {
       core.debug('This is a merged release PR with release-me tag')
       let prNumber = github.getPullRequestNumberFromContext()
       core.debug(`PR number from context: ${prNumber}`)
@@ -231,8 +280,11 @@ export async function run(): Promise<void> {
         core.debug(`Found PR #${prNumber} by versions`)
       }
 
-      core.info(`Creating releases...`)
-      await github.createRelease(changes)
+      if (!isVersionBumpPR) {
+        core.info(`Creating releases...`)
+        await github.createRelease(changes)
+      }
+
       core.setOutput('releases-created', true)
 
       if (prNumber) {

@@ -909,7 +909,8 @@ describe('GitHubService', () => {
         owner: 'test-owner',
         repo: 'test-repo',
         state: 'open',
-        head: 'test-owner:release-main'
+        head: 'test-owner:release-main',
+        labels: ['release-target:main']
       })
     })
 
@@ -1780,7 +1781,10 @@ describe('GitHubService', () => {
         ]
       })
       const manifest = { 'packages/core': { latest: '1.2.3', main: '1.2.3' } }
-      const prNumber = await githubService.findReleasePRByVersions(manifest)
+      const prNumber = await githubService.findReleasePRByVersions(
+        manifest,
+        'main'
+      )
       expect(prNumber).toBe(42)
     })
 
@@ -1795,7 +1799,10 @@ describe('GitHubService', () => {
         ]
       })
       const manifest = { 'packages/core': { latest: '1.2.3', main: '1.2.3' } }
-      const prNumber = await githubService.findReleasePRByVersions(manifest)
+      const prNumber = await githubService.findReleasePRByVersions(
+        manifest,
+        'main'
+      )
       expect(prNumber).toBeNull()
     })
   })
