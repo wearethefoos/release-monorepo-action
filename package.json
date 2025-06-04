@@ -49,7 +49,7 @@
     "@rollup/plugin-typescript": "^12.1.2",
     "@types/node": "^20.17.57",
     "@types/semver": "^7.7.0",
-    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/eslint-plugin": "^8.33.1",
     "@typescript-eslint/parser": "^8.33.1",
     "@vercel/ncc": "^0.38.3",
     "@vitest/coverage-v8": "^1.6.1",
