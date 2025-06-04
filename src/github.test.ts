@@ -841,7 +841,7 @@ describe('GitHubService', () => {
         owner: 'test-owner',
         repo: 'test-repo',
         title: 'chore: release packages/core@1.1.0',
-        body: '## packages/core Changelog (1.0.0 -> 1.1.0)\n\n## Changes\n\n- feat(core): add feature',
+        body: '## Core Changelog (1.0.0 -> 1.1.0)\n\n## Changes\n\n- feat(core): add feature',
         head: 'release-main',
         base: 'main',
         labels: ['release-me', 'release-target:main']
@@ -999,7 +999,7 @@ describe('GitHubService', () => {
         owner: 'test-owner',
         repo: 'test-repo',
         title: 'chore: release packages/core@1.1.0',
-        body: '## packages/core Changelog (1.0.0 -> 1.1.0)\n\n## Changes\n\n- feat(core): add feature',
+        body: '## Core Changelog (1.0.0 -> 1.1.0)\n\n## Changes\n\n- feat(core): add feature',
         head: 'release-main',
         base: 'main',
         labels: ['release-me', 'release-target:main']
@@ -1189,7 +1189,7 @@ describe('GitHubService', () => {
         owner: 'test-owner',
         repo: 'test-repo',
         title: 'chore: release packages/core@1.1.0',
-        body: '## packages/core Changelog (1.0.0 -> 1.1.0)\n\n## Changes\n\n- feat(core): add feature',
+        body: '## Core Changelog (1.0.0 -> 1.1.0)\n\n## Changes\n\n- feat(core): add feature',
         head: 'release-main',
         labels: ['release-me', 'release-target:main'],
         base: 'main'

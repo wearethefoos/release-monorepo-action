@@ -39980,12 +39980,15 @@ class GitHubService {
                 changelogContent = fs__namespace.readFileSync(changelogPath, 'utf-8');
             }
             // Ensure the changelog starts with a level 1 heading
-            const packageName = change.path === '.' ? 'Changelog' : `${change.path} Changelog`;
+            const packageName = change.path === '.'
+                ? 'Changelog'
+                : `${change.name.charAt(0).toUpperCase() + change.name.slice(1)} Changelog`;
             if (!changelogContent.startsWith('# ')) {
                 changelogContent = `# ${packageName}\n\n${changelogContent}`;
             }
             // Add the new version section after the level 1 heading
-            const newVersionSection = `## ${change.newVersion} (${new Date().toISOString().split('T')[0]})\n\n${change.changelog}\n`;
+            const compareLink = `(https://github.com/${this.releaseContext.owner}/${this.releaseContext.repo}/compare/${change.path === '.' ? '' : `${change.name}-`}v${change.currentVersion}...${change.path === '.' ? '' : `${change.name}-`}v${change.newVersion}]`;
+            const newVersionSection = `## [${change.newVersion}](${compareLink}) (${new Date().toISOString().split('T')[0]})\n\n${change.changelog}\n`;
             const lines = changelogContent.split('\n');
             const headingIndex = lines.findIndex((line) => line.startsWith('# '));
             if (headingIndex !== -1) {
@@ -40258,7 +40261,7 @@ class GitHubService {
     generatePullRequestBody(changes) {
         return changes
             .map((change) => {
-            return `## ${change.path === '.' ? 'Changelog' : `${change.path} Changelog`} (${change.currentVersion} -> ${change.newVersion})\n\n${change.changelog}`;
+            return `## ${change.path === '.' ? 'Changelog' : `${change.name.charAt(0).toUpperCase() + change.name.slice(1)} Changelog`} (${change.currentVersion} -> ${change.newVersion})\n\n${change.changelog}`;
         })
             .join('\n\n');
     }
