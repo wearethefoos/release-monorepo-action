@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.5](https://github.com/wearethefoos/release-monorepo-action/compare/v1.0.4...v1.0.5) (2025-06-04)
+
+### 🐛 Fixes
+
+- add package name to version output
+- proper titles in changelogs
+- version compare links
+
 ## 1.0.4 (2025-06-04)
 
 ### 🐛 Fixes
