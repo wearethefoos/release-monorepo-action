@@ -60,7 +60,7 @@ export class GitHubService {
         branch: `release-${target}`
       })
       return false // Branch exists
-    } catch (error) {
+    } catch {
       return true // Branch does not exist
     }
   }

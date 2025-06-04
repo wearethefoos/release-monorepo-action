@@ -39850,7 +39850,7 @@ class GitHubService {
             });
             return false; // Branch exists
         }
-        catch (error) {
+        catch {
             return true; // Branch does not exist
         }
     }
