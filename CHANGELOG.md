@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.4 (2025-06-04)
+
+### 🐛 Fixes
+
+- allow bumping latest to release targets
+- package names should not include full paths
+
 ## 1.0.3 (2025-06-02)
 
 ### 🐛 Fixes
