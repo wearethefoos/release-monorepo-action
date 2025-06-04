@@ -40868,13 +40868,14 @@ async function run() {
         }
         coreExports.setOutput('versions', JSON.stringify(changes.map((c) => {
             return {
+                name: c.name,
                 path: c.path,
                 target: c.releaseTarget,
                 version: c.newVersion
             };
         })));
         coreExports.info(`Versions on ${releaseTarget} bumped to ${changes
-            .map((ch) => `${ch.path}-v${ch.newVersion}`)
+            .map((ch) => `${ch.name}-v${ch.newVersion}`)
             .join(', ')}`);
         if (isPrerelease) {
             coreExports.info('Skipping creating release PR for prerelease.');

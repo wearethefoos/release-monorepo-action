@@ -247,6 +247,7 @@ export async function run(): Promise<void> {
       JSON.stringify(
         changes.map((c) => {
           return {
+            name: c.name,
             path: c.path,
             target: c.releaseTarget,
             version: c.newVersion
@@ -257,7 +258,7 @@ export async function run(): Promise<void> {
 
     core.info(
       `Versions on ${releaseTarget} bumped to ${changes
-        .map((ch) => `${ch.path}-v${ch.newVersion}`)
+        .map((ch) => `${ch.name}-v${ch.newVersion}`)
         .join(', ')}`
     )
 

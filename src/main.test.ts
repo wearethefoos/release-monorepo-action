@@ -219,11 +219,13 @@ describe('main.ts', () => {
       'versions',
       JSON.stringify([
         {
+          name: 'core',
           path: 'packages/core',
           target: 'canary',
           version: '1.1.0'
         },
         {
+          name: 'utils',
           path: 'packages/utils',
           target: 'canary',
           version: '2.2.0'
@@ -352,11 +354,13 @@ describe('main.ts', () => {
       'versions',
       JSON.stringify([
         {
+          name: 'core',
           path: 'packages/core',
           target: 'canary',
           version: '1.1.0'
         },
         {
+          name: 'utils',
           path: 'packages/utils',
           target: 'canary',
           version: '2.2.0'
@@ -408,11 +412,13 @@ describe('main.ts', () => {
       'versions',
       JSON.stringify([
         {
+          name: 'core',
           path: 'packages/core',
           target: 'canary',
           version: '1.1.0'
         },
         {
+          name: 'utils',
           path: 'packages/utils',
           target: 'canary',
           version: '2.2.0'
