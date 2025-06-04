@@ -7,6 +7,7 @@ import {
   determineVersionBump,
   generateChangelog
 } from './version'
+import { basename } from 'path'
 
 /**
  * The main function for the action.
@@ -135,11 +136,17 @@ export async function run(): Promise<void> {
           'versions',
           JSON.stringify(
             changesToLatest.map((c) => ({
+              name: basename(c.path),
               path: c.path,
               target: c.releaseTarget,
               version: c.newVersion
             }))
           )
+        )
+        core.info(
+          `Versions on ${releaseTarget} bumped to latest for ${changesToLatest
+            .map((ch) => `${ch.name}-v${ch.newVersion}`)
+            .join(', ')}`
         )
         core.debug('Returning early: bumped release target to latest')
         return
@@ -200,6 +207,7 @@ export async function run(): Promise<void> {
       }
 
       changes.push({
+        name: basename(packagePath),
         path: packagePath,
         currentVersion,
         newVersion,
@@ -245,6 +253,12 @@ export async function run(): Promise<void> {
           }
         })
       )
+    )
+
+    core.info(
+      `Versions on ${releaseTarget} bumped to ${changes
+        .map((ch) => `${ch.path}-v${ch.newVersion}`)
+        .join(', ')}`
     )
 
     if (isPrerelease) {
@@ -323,6 +337,7 @@ export async function run(): Promise<void> {
     // Create release PR
     core.debug('Creating release PR (default branch)')
     await github.createReleasePullRequest(changes, 'release-me')
+    core.setOutput('releases-created', false)
     core.debug('Returning after createReleasePullRequest (default branch)')
   } catch (error) {
     if (error instanceof Error) {

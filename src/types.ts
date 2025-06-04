@@ -23,6 +23,7 @@ export interface ConventionalCommit {
 }
 
 export interface PackageChanges {
+  name: string
   path: string
   currentVersion: string
   newVersion: string

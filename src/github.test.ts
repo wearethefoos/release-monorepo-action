@@ -533,7 +533,7 @@ describe('GitHubService', () => {
         data: {
           content: Buffer.from(
             JSON.stringify({
-              'packages/core': { latest: '1.0.0', main: '1.0.0' }
+              '.': { latest: '1.0.0', main: '1.0.0' }
             })
           ).toString('base64')
         }
@@ -545,8 +545,9 @@ describe('GitHubService', () => {
       })
       const changes: PackageChanges[] = [
         {
+          name: 'root',
           releaseTarget: 'main',
-          path: 'packages/core',
+          path: '.',
           currentVersion: '1.0.0',
           newVersion: '1.1.0',
           commits: [
@@ -573,8 +574,8 @@ describe('GitHubService', () => {
       expect(mockOctokit.repos.createRelease).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
-        tag_name: 'packages/core-v1.0.0',
-        name: 'packages/core v1.0.0',
+        tag_name: 'v1.0.0',
+        name: 'v1.0.0',
         body: '## Changes\n\n- feat(core): add feature',
         draft: false,
         prerelease: false
@@ -598,6 +599,7 @@ describe('GitHubService', () => {
       mockOctokit.repos.createRelease.mockResolvedValue(mockRelease)
       const changes: PackageChanges[] = [
         {
+          name: 'core',
           releaseTarget: 'main',
           path: 'packages/core',
           currentVersion: '1.0.0',
@@ -614,6 +616,7 @@ describe('GitHubService', () => {
           changelog: '## Changes\n\n- feat(core): add feature'
         },
         {
+          name: 'utils',
           releaseTarget: 'main',
           path: 'packages/utils',
           currentVersion: '2.0.0',
@@ -638,8 +641,8 @@ describe('GitHubService', () => {
       expect(mockOctokit.repos.createRelease).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
-        tag_name: 'packages/core-v1.0.0',
-        name: 'packages/core v1.0.0',
+        tag_name: 'core-v1.0.0',
+        name: 'core v1.0.0',
         body: '## Changes\n\n- feat(core): add feature',
         draft: false,
         prerelease: false
@@ -647,8 +650,8 @@ describe('GitHubService', () => {
       expect(mockOctokit.repos.createRelease).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
-        tag_name: 'packages/utils-v2.0.0',
-        name: 'packages/utils v2.0.0',
+        tag_name: 'utils-v2.0.0',
+        name: 'utils v2.0.0',
         body: '## Changes\n\n- feat(utils): add utility',
         draft: false,
         prerelease: false
@@ -659,6 +662,7 @@ describe('GitHubService', () => {
       mockOctokit.repos.createRelease.mockRejectedValue(new Error('API Error'))
       const changes: PackageChanges[] = [
         {
+          name: 'core',
           releaseTarget: 'main',
           path: 'packages/core',
           currentVersion: '1.0.0',
@@ -732,6 +736,7 @@ describe('GitHubService', () => {
       })
       const changes: PackageChanges[] = [
         {
+          name: 'core',
           releaseTarget: 'main',
           path: 'packages/core',
           currentVersion: '1.0.0',
@@ -813,6 +818,7 @@ describe('GitHubService', () => {
 
       const changes: PackageChanges[] = [
         {
+          name: 'core',
           releaseTarget: 'main',
           path: 'packages/core',
           currentVersion: '1.0.0',
@@ -886,6 +892,7 @@ describe('GitHubService', () => {
 
       const changes: PackageChanges[] = [
         {
+          name: 'core',
           releaseTarget: 'main',
           path: 'packages/core',
           currentVersion: '1.0.0',
@@ -969,6 +976,7 @@ describe('GitHubService', () => {
 
       const changes: PackageChanges[] = [
         {
+          name: 'core',
           releaseTarget: 'main',
           path: 'packages/core',
           currentVersion: '1.0.0',
@@ -1050,6 +1058,7 @@ describe('GitHubService', () => {
 
       const changes: PackageChanges[] = [
         {
+          name: 'root',
           releaseTarget: 'main',
           path: '.',
           currentVersion: '1.0.0',
@@ -1150,6 +1159,7 @@ describe('GitHubService', () => {
 
       const changes: PackageChanges[] = [
         {
+          name: 'core',
           releaseTarget: 'main',
           path: 'packages/core',
           currentVersion: '1.0.0',
@@ -1268,6 +1278,7 @@ describe('GitHubService', () => {
 
       const changes: PackageChanges[] = [
         {
+          name: 'core',
           releaseTarget: 'main',
           path: 'packages/core',
           currentVersion: '1.0.0',
@@ -1284,6 +1295,7 @@ describe('GitHubService', () => {
           changelog: '## Changes\n\n- feat(core): add feature'
         },
         {
+          name: 'utils',
           releaseTarget: 'main',
           path: 'packages/utils',
           currentVersion: '2.0.0',
@@ -1813,6 +1825,7 @@ describe('GitHubService', () => {
       const title = githubService.generateReleasePRTitle([
         {
           path: '.',
+          name: 'core',
           currentVersion: '1.0.0',
           newVersion: '1.1.0',
           commits: [],
@@ -1826,6 +1839,7 @@ describe('GitHubService', () => {
       // @ts-expect-error: access private method for test
       const title = githubService.generateReleasePRTitle([
         {
+          name: 'core',
           path: 'packages/core',
           currentVersion: '1.0.0',
           newVersion: '1.1.0',
@@ -1841,6 +1855,7 @@ describe('GitHubService', () => {
       const title = githubService.generateReleasePRTitle([
         {
           path: 'packages/core',
+          name: 'core',
           currentVersion: '1.0.0',
           newVersion: '1.1.0',
           commits: [],
@@ -1849,6 +1864,7 @@ describe('GitHubService', () => {
         },
         {
           path: 'packages/utils',
+          name: 'utils',
           currentVersion: '2.0.0',
           newVersion: '2.1.0',
           commits: [],

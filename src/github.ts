@@ -11,6 +11,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as toml from '@iarna/toml'
 import { determineVersionBump, parseConventionalCommit } from './version.js'
+import { basename } from 'path'
 
 interface CommitFile {
   filename: string
@@ -563,6 +564,7 @@ export class GitHubService {
       core.setOutput('prerelease', change.newVersion.includes('-rc.'))
     } else {
       const versions = changes.map((change) => ({
+        name: basename(change.path),
         path: change.path,
         version: change.newVersion,
         prerelease: change.newVersion.includes('-rc.')
@@ -582,9 +584,13 @@ export class GitHubService {
 
       const versionBase = `v${newVersion}`
       const tagName =
-        change.path === '.' ? versionBase : `${change.path}-${versionBase}`
+        change.path === '.'
+          ? versionBase
+          : `${basename(change.path)}-${versionBase}`
       const releaseName =
-        change.path === '.' ? versionBase : `${change.path} ${versionBase}`
+        change.path === '.'
+          ? versionBase
+          : `${basename(change.path)} ${versionBase}`
 
       // Create tag
       await this.octokit.git.createRef({
@@ -998,6 +1004,7 @@ export class GitHubService {
       // Convert manifest to PackageChanges format
       const changes: PackageChanges[] = Object.entries(manifest).map(
         ([path, newVersion]) => ({
+          name: basename(path),
           path,
           currentVersion: '', // We don't need this for title matching
           newVersion: newVersion.latest,
@@ -1086,6 +1093,7 @@ export class GitHubService {
     for (const [path, versions] of Object.entries(manifest)) {
       if (versions[releaseTarget] !== versions.latest) {
         changes.push({
+          name: basename(path),
           path,
           currentVersion: versions[releaseTarget],
           newVersion: versions.latest,

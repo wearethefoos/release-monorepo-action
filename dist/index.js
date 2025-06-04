@@ -40271,6 +40271,7 @@ class GitHubService {
         }
         else {
             const versions = changes.map((change) => ({
+                name: path.basename(change.path),
                 path: change.path,
                 version: change.newVersion,
                 prerelease: change.newVersion.includes('-rc.')
@@ -40283,8 +40284,12 @@ class GitHubService {
                 ? change.newVersion
                 : manifest[change.path][change.releaseTarget];
             const versionBase = `v${newVersion}`;
-            const tagName = change.path === '.' ? versionBase : `${change.path}-${versionBase}`;
-            const releaseName = change.path === '.' ? versionBase : `${change.path} ${versionBase}`;
+            const tagName = change.path === '.'
+                ? versionBase
+                : `${path.basename(change.path)}-${versionBase}`;
+            const releaseName = change.path === '.'
+                ? versionBase
+                : `${path.basename(change.path)} ${versionBase}`;
             // Create tag
             await this.octokit.git.createRef({
                 owner: this.releaseContext.owner,
@@ -40606,8 +40611,9 @@ class GitHubService {
                 per_page: 10 // Look at the 10 most recent ones
             });
             // Convert manifest to PackageChanges format
-            const changes = Object.entries(manifest).map(([path, newVersion]) => ({
-                path,
+            const changes = Object.entries(manifest).map(([path$1, newVersion]) => ({
+                name: path.basename(path$1),
+                path: path$1,
                 currentVersion: '', // We don't need this for title matching
                 newVersion: newVersion.latest,
                 commits: [], // We don't need this for title matching
@@ -40677,10 +40683,11 @@ class GitHubService {
     }
     getReleaseTargetToLatestChanges(manifest, releaseTarget) {
         const changes = [];
-        for (const [path, versions] of Object.entries(manifest)) {
+        for (const [path$1, versions] of Object.entries(manifest)) {
             if (versions[releaseTarget] !== versions.latest) {
                 changes.push({
-                    path,
+                    name: path.basename(path$1),
+                    path: path$1,
                     currentVersion: versions[releaseTarget],
                     newVersion: versions.latest,
                     commits: [],
@@ -40781,10 +40788,14 @@ async function run() {
                     coreExports.setOutput('version', changesToLatest[0].newVersion);
                 }
                 coreExports.setOutput('versions', JSON.stringify(changesToLatest.map((c) => ({
+                    name: path.basename(c.path),
                     path: c.path,
                     target: c.releaseTarget,
                     version: c.newVersion
                 }))));
+                coreExports.info(`Versions on ${releaseTarget} bumped to latest for ${changesToLatest
+                    .map((ch) => `${ch.name}-v${ch.newVersion}`)
+                    .join(', ')}`);
                 coreExports.debug('Returning early: bumped release target to latest');
                 return;
             }
@@ -40830,6 +40841,7 @@ async function run() {
                 prereleaseVersionCommentLines.push(`- ${newVersion} for ${packagePath}`);
             }
             changes.push({
+                name: path.basename(packagePath),
                 path: packagePath,
                 currentVersion,
                 newVersion,
@@ -40861,6 +40873,9 @@ async function run() {
                 version: c.newVersion
             };
         })));
+        coreExports.info(`Versions on ${releaseTarget} bumped to ${changes
+            .map((ch) => `${ch.path}-v${ch.newVersion}`)
+            .join(', ')}`);
         if (isPrerelease) {
             coreExports.info('Skipping creating release PR for prerelease.');
             try {
@@ -40919,6 +40934,7 @@ async function run() {
         // Create release PR
         coreExports.debug('Creating release PR (default branch)');
         await github.createReleasePullRequest(changes, 'release-me');
+        coreExports.setOutput('releases-created', false);
         coreExports.debug('Returning after createReleasePullRequest (default branch)');
     }
     catch (error) {
