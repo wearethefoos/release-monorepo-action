@@ -233,7 +233,7 @@ export class GitHubService {
       }
 
       // Add the new version section after the level 1 heading
-      const compareLink = `(https://github.com/${this.releaseContext.owner}/${this.releaseContext.repo}/compare/${change.path === '.' ? '' : `${change.name}-`}v${change.currentVersion}...${change.path === '.' ? '' : `${change.name}-`}v${change.newVersion}]`
+      const compareLink = `https://github.com/${this.releaseContext.owner}/${this.releaseContext.repo}/compare/${change.path === '.' ? '' : `${change.name}-`}v${change.currentVersion}...${change.path === '.' ? '' : `${change.name}-`}v${change.newVersion}`
       const newVersionSection = `## [${change.newVersion}](${compareLink}) (${new Date().toISOString().split('T')[0]})\n\n${change.changelog}\n`
       const lines = changelogContent.split('\n')
       const headingIndex = lines.findIndex((line) => line.startsWith('# '))
