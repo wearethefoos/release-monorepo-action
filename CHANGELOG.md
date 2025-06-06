@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.1](https://github.com/wearethefoos/release-monorepo-action/compare/v1.1.0...v1.1.1) (2025-06-06)
+
+### 🐛 Fixes
+
+- force create tags when we release
+
 ## [1.1.0](https://github.com/wearethefoos/release-monorepo-action/compare/v1.0.7...v1.1.0) (2025-06-06)
 
 ### 🚀 Features
