@@ -40266,22 +40266,8 @@ class GitHubService {
             .join('\n\n');
     }
     async createRelease(changes, prerelease = false) {
-        // Set outputs based on number of packages
-        if (changes.length === 1) {
-            const change = changes[0];
-            coreExports.setOutput('version', change.newVersion);
-            coreExports.setOutput('prerelease', change.newVersion.includes('-rc.'));
-        }
-        else {
-            const versions = changes.map((change) => ({
-                name: path.basename(change.path),
-                path: change.path,
-                version: change.newVersion,
-                prerelease: change.newVersion.includes('-rc.')
-            }));
-            coreExports.setOutput('versions', JSON.stringify(versions));
-        }
         const manifest = await this.getManifestFromMain(coreExports.getInput('manifest-file') ?? '.release-manifest.json', coreExports.getInput('root-dir') ?? '.');
+        const versions = [];
         for (const change of changes) {
             const newVersion = prerelease
                 ? change.newVersion
@@ -40301,6 +40287,7 @@ class GitHubService {
                 sha: githubExports.context.sha
             });
             // Create release
+            coreExports.info(`Creating release ${releaseName}`);
             await this.octokit.repos.createRelease({
                 owner: this.releaseContext.owner,
                 repo: this.releaseContext.repo,
@@ -40308,9 +40295,21 @@ class GitHubService {
                 name: releaseName,
                 body: change.changelog,
                 draft: false,
-                prerelease: change.newVersion.includes('-rc.')
+                prerelease: !!prerelease
+            });
+            versions.push({
+                name: path.basename(change.path),
+                path: change.path,
+                version: newVersion,
+                prerelease: !!prerelease
             });
         }
+        if (versions.length === 1) {
+            const version = versions[0];
+            coreExports.setOutput('version', version.version);
+        }
+        coreExports.setOutput('prerelease', prerelease);
+        coreExports.setOutput('versions', JSON.stringify(versions));
     }
     /**
      * Fetch all commits (with files) since the last release (or fallback) for the repo.
