@@ -40280,12 +40280,18 @@ class GitHubService {
                 ? versionBase
                 : `${path.basename(change.path)} ${versionBase}`;
             // Create tag
-            await this.octokit.git.createRef({
-                owner: this.releaseContext.owner,
-                repo: this.releaseContext.repo,
-                ref: `refs/tags/${tagName}`,
-                sha: githubExports.context.sha
-            });
+            try {
+                await this.octokit.git.createRef({
+                    owner: this.releaseContext.owner,
+                    repo: this.releaseContext.repo,
+                    ref: `refs/tags/${tagName}`,
+                    sha: githubExports.context.sha
+                });
+            }
+            catch (error) {
+                coreExports.warning(`Failed to create tag ${tagName}: ${error}`);
+                coreExports.setFailed('Failed to create tag');
+            }
             // Create release
             coreExports.info(`Creating release ${releaseName}`);
             await this.octokit.repos.createRelease({

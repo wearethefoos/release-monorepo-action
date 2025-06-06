@@ -583,12 +583,17 @@ export class GitHubService {
           : `${basename(change.path)} ${versionBase}`
 
       // Create tag
-      await this.octokit.git.createRef({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        ref: `refs/tags/${tagName}`,
-        sha: context.sha
-      })
+      try {
+        await this.octokit.git.createRef({
+          owner: this.releaseContext.owner,
+          repo: this.releaseContext.repo,
+          ref: `refs/tags/${tagName}`,
+          sha: context.sha
+        })
+      } catch (error) {
+        core.warning(`Failed to create tag ${tagName}: ${error}`)
+        core.setFailed('Failed to create tag')
+      }
 
       // Create release
       core.info(`Creating release ${releaseName}`)
