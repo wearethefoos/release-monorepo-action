@@ -623,6 +623,12 @@ export class GitHubService {
 
     core.setOutput('prerelease', prerelease)
     core.setOutput('versions', JSON.stringify(versions))
+
+    core.info(
+      `Versions on ${changes[0].releaseTarget} bumped to ${versions
+        .map((version) => `${version.name}-v${version.version}`)
+        .join(', ')}`
+    )
   }
 
   /**

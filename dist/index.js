@@ -40317,6 +40317,9 @@ class GitHubService {
         }
         coreExports.setOutput('prerelease', prerelease);
         coreExports.setOutput('versions', JSON.stringify(versions));
+        coreExports.info(`Versions on ${changes[0].releaseTarget} bumped to ${versions
+            .map((version) => `${version.name}-v${version.version}`)
+            .join(', ')}`);
     }
     /**
      * Fetch all commits (with files) since the last release (or fallback) for the repo.
