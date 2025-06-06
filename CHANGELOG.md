@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.6](https://github.com/wearethefoos/release-monorepo-action/compare/v1.0.5...v1.0.6) (2025-06-06)
+
+### 🐛 Fixes
+
+- version output for released changes
+
 ## [1.0.5](https://github.com/wearethefoos/release-monorepo-action/compare/v1.0.4...v1.0.5) (2025-06-04)
 
 ### 🐛 Fixes
