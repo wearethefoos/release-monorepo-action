@@ -181,7 +181,7 @@ describe('main.ts', () => {
     const mockCommits = [
       {
         commit: {
-          message: 'chore: release packages/core@1.1.0'
+          message: 'chore: release core@1.1.0'
         },
         sha: 'abc123'
       }
@@ -323,7 +323,7 @@ describe('main.ts', () => {
     const mockCommits = [
       {
         commit: {
-          message: 'chore: release packages/core@1.1.0'
+          message: 'chore: release core@1.1.0'
         },
         sha: 'abc123'
       }
@@ -373,7 +373,7 @@ describe('main.ts', () => {
     const mockCommits = [
       {
         commit: {
-          message: 'chore: release packages/core@1.1.0'
+          message: 'chore: release core@1.1.0'
         },
         sha: 'abc456'
       }

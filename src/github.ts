@@ -171,7 +171,7 @@ export class GitHubService {
       if (change.path === '.') {
         return `chore: release ${change.newVersion}`
       } else {
-        return `chore: release ${change.path}@${change.newVersion}`
+        return `chore: release ${change.name}@${change.newVersion}`
       }
     } else {
       return `chore: release ${changes[0].releaseTarget}`

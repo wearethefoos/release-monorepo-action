@@ -39937,7 +39937,7 @@ class GitHubService {
                 return `chore: release ${change.newVersion}`;
             }
             else {
-                return `chore: release ${change.path}@${change.newVersion}`;
+                return `chore: release ${change.name}@${change.newVersion}`;
             }
         }
         else {

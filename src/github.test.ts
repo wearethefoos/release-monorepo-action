@@ -562,7 +562,7 @@ describe('GitHubService', () => {
               type: 'chore',
               scope: '',
               breaking: false,
-              message: 'chore: release packages/core@1.1.0',
+              message: 'chore: release core@1.1.0',
               hash: 'abc456'
             }
           ],
@@ -710,7 +710,7 @@ describe('GitHubService', () => {
         data: [
           {
             number: 123,
-            title: 'chore: release packages/core@1.0.0',
+            title: 'chore: release core@1.0.0',
             body: 'Old changelog',
             labels: [{ name: 'release-me' }],
             head: { ref: 'release-1.0.0-2024-01-01' }
@@ -758,7 +758,7 @@ describe('GitHubService', () => {
         owner: 'test-owner',
         repo: 'test-repo',
         pull_number: 123,
-        title: 'chore: release packages/core@1.1.0',
+        title: 'chore: release core@1.1.0',
         body: expect.stringContaining('## Changes')
       })
     })
@@ -840,7 +840,7 @@ describe('GitHubService', () => {
       expect(mockOctokit.pulls.create).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
-        title: 'chore: release packages/core@1.1.0',
+        title: 'chore: release core@1.1.0',
         body: '## Core Changelog (1.0.0 -> 1.1.0)\n\n## Changes\n\n- feat(core): add feature',
         head: 'release-main',
         base: 'main',
@@ -858,7 +858,7 @@ describe('GitHubService', () => {
         data: [
           {
             number: 789,
-            title: 'chore: release packages/core@1.0.0',
+            title: 'chore: release core@1.0.0',
             body: 'Old changelog',
             labels: [{ name: 'release-me' }],
             head: { ref: 'release-1.0.0-2024-01-01' }
@@ -998,7 +998,7 @@ describe('GitHubService', () => {
       expect(mockOctokit.pulls.create).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
-        title: 'chore: release packages/core@1.1.0',
+        title: 'chore: release core@1.1.0',
         body: '## Core Changelog (1.0.0 -> 1.1.0)\n\n## Changes\n\n- feat(core): add feature',
         head: 'release-main',
         base: 'main',
@@ -1188,7 +1188,7 @@ describe('GitHubService', () => {
       expect(mockOctokit.pulls.create).toHaveBeenCalledWith({
         owner: 'test-owner',
         repo: 'test-repo',
-        title: 'chore: release packages/core@1.1.0',
+        title: 'chore: release core@1.1.0',
         body: '## Core Changelog (1.0.0 -> 1.1.0)\n\n## Changes\n\n- feat(core): add feature',
         head: 'release-main',
         labels: ['release-me', 'release-target:main'],
@@ -1787,7 +1787,7 @@ describe('GitHubService', () => {
         data: [
           {
             number: 42,
-            title: 'chore: release packages/core@1.2.3',
+            title: 'chore: release core@1.2.3',
             labels: [{ name: 'release-me' }]
           }
         ]
@@ -1848,7 +1848,7 @@ describe('GitHubService', () => {
           releaseTarget: 'main'
         }
       ])
-      expect(title).toBe('chore: release packages/core@1.1.0')
+      expect(title).toBe('chore: release core@1.1.0')
     })
     it('should generate correct title for multi-package', () => {
       // @ts-expect-error: access private method for test
