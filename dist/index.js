@@ -40290,20 +40290,38 @@ class GitHubService {
                 });
             }
             catch (error) {
-                coreExports.warning(`Failed to create tag ${tagName}: ${error}`);
-                coreExports.setFailed('Failed to create tag');
+                if (error instanceof Error &&
+                    error.message.includes('Reference already exists')) {
+                    coreExports.warning(`Tag ${tagName} already exists, skipping`);
+                }
+                else {
+                    coreExports.setFailed('Failed to create tag');
+                    throw error;
+                }
             }
             // Create release
             coreExports.info(`Creating release ${releaseName}`);
-            await this.octokit.repos.createRelease({
-                owner: this.releaseContext.owner,
-                repo: this.releaseContext.repo,
-                tag_name: tagName,
-                name: releaseName,
-                body: change.changelog,
-                draft: false,
-                prerelease: !!prerelease
-            });
+            try {
+                await this.octokit.repos.createRelease({
+                    owner: this.releaseContext.owner,
+                    repo: this.releaseContext.repo,
+                    tag_name: tagName,
+                    name: releaseName,
+                    body: change.changelog,
+                    draft: false,
+                    prerelease: !!prerelease
+                });
+            }
+            catch (error) {
+                if (error instanceof Error &&
+                    error.message.includes('already_exists')) {
+                    coreExports.warning(`Release ${releaseName} already exists, skipping`);
+                }
+                else {
+                    coreExports.setFailed('Failed to create release');
+                    throw error;
+                }
+            }
             versions.push({
                 name: path.basename(change.path),
                 path: change.path,
