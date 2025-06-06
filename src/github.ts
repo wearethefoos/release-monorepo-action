@@ -588,7 +588,8 @@ export class GitHubService {
           owner: this.releaseContext.owner,
           repo: this.releaseContext.repo,
           ref: `refs/tags/${tagName}`,
-          sha: context.sha
+          sha: context.sha,
+          force: true
         })
       } catch (error) {
         core.warning(`Failed to create tag ${tagName}: ${error}`)

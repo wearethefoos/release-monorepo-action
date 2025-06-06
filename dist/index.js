@@ -40285,7 +40285,8 @@ class GitHubService {
                     owner: this.releaseContext.owner,
                     repo: this.releaseContext.repo,
                     ref: `refs/tags/${tagName}`,
-                    sha: githubExports.context.sha
+                    sha: githubExports.context.sha,
+                    force: true
                 });
             }
             catch (error) {
