@@ -40419,10 +40419,13 @@ class GitHubService {
         const packageJsonPath = path__namespace.join(packagePath, 'package.json');
         const cargoTomlPath = path__namespace.join(packagePath, 'Cargo.toml');
         const versionTxtPath = path__namespace.join(packagePath, 'version.txt');
+        const indentation = coreExports.getInput('indentation') ?? '2';
+        const indent = indentation === 'tab' ? '\t' : ' '.repeat(parseInt(indentation));
         if (fs__namespace.existsSync(packageJsonPath)) {
             const packageJson = JSON.parse(fs__namespace.readFileSync(packageJsonPath, 'utf-8'));
             packageJson.version = newVersion;
-            fs__namespace.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
+            const formattedJSON = JSON.stringify(packageJson, null, 2).replace(/ {2}/g, indent) + '\n';
+            fs__namespace.writeFileSync(packageJsonPath, formattedJSON);
         }
         else if (fs__namespace.existsSync(cargoTomlPath)) {
             const cargoToml = tomlExports.parse(fs__namespace.readFileSync(cargoTomlPath, 'utf-8'));

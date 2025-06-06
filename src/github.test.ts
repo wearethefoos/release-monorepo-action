@@ -1410,9 +1410,15 @@ describe('GitHubService', () => {
       await githubService.updatePackageVersion(packagePath, newVersion)
 
       expect(fs.readFileSync).toHaveBeenCalledWith(packageJsonPath, 'utf-8')
+      const formattedJSON =
+        JSON.stringify(
+          { ...packageJson, version: newVersion },
+          null,
+          2
+        ).replace(/ {2}/g, '  ') + '\n'
       expect(fs.writeFileSync).toHaveBeenCalledWith(
         packageJsonPath,
-        JSON.stringify({ ...packageJson, version: newVersion }, null, 2) + '\n'
+        formattedJSON
       )
     })
 

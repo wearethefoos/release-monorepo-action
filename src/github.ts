@@ -772,14 +772,16 @@ export class GitHubService {
     const packageJsonPath = path.join(packagePath, 'package.json')
     const cargoTomlPath = path.join(packagePath, 'Cargo.toml')
     const versionTxtPath = path.join(packagePath, 'version.txt')
+    const indentation = core.getInput('indentation') ?? '2'
+    const indent =
+      indentation === 'tab' ? '\t' : ' '.repeat(parseInt(indentation))
 
     if (fs.existsSync(packageJsonPath)) {
       const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'))
       packageJson.version = newVersion
-      fs.writeFileSync(
-        packageJsonPath,
-        JSON.stringify(packageJson, null, 2) + '\n'
-      )
+      const formattedJSON =
+        JSON.stringify(packageJson, null, 2).replace(/ {2}/g, indent) + '\n'
+      fs.writeFileSync(packageJsonPath, formattedJSON)
     } else if (fs.existsSync(cargoTomlPath)) {
       const cargoToml = toml.parse(fs.readFileSync(cargoTomlPath, 'utf-8'))
       if (cargoToml.package) {

@@ -15,13 +15,14 @@ accordingly.
 
 ## Inputs
 
-| Input                | Description                                           | Required | Default                  |
-| -------------------- | ----------------------------------------------------- | -------- | ------------------------ |
-| `token`              | GitHub token for authentication                       | Yes      | -                        |
-| `root-dir`           | Root directory for the release                        | Yes      | `.`                      |
-| `manifest-file`      | Path to the manifest file containing package versions | Yes      | `.release-manifest.json` |
-| `create-prereleases` | Whether to create prereleases from pull requests      | No       | `false`                  |
-| `prerelease-label`   | The PR label to use for prereleases                   | No       | `Prerelease`             |
+| Input                | Description                                                                                     | Required | Default                  |
+| -------------------- | ----------------------------------------------------------------------------------------------- | -------- | ------------------------ |
+| `token`              | GitHub token for authentication                                                                 | Yes      | -                        |
+| `root-dir`           | Root directory for the release                                                                  | Yes      | `.`                      |
+| `manifest-file`      | Path to the manifest file containing package versions                                           | Yes      | `.release-manifest.json` |
+| `create-prereleases` | Whether to create prereleases from pull requests                                                | No       | `false`                  |
+| `prerelease-label`   | The PR label to use for prereleases                                                             | No       | `Prerelease`             |
+| `indentation`        | The indentation to use for json files, can be "tab" or a number of spaces. Default is 2 spaces. | No       | `'2'`                    |
 
 ## Outputs
 

@@ -34,6 +34,12 @@ inputs:
       "latest"'
     required: false
     default: 'main'
+  indentation:
+    description:
+      'The indentation to use for json files, can be "tab" or a number of
+      spaces. Default is 2 spaces.'
+    required: false
+    default: '2'
 
 outputs:
   releases-created:
