@@ -267,7 +267,12 @@ export class GitHubService {
     }
     const manifest = JSON.parse(manifestContent)
     await this.updateManifest(manifest, changes, changes[0].releaseTarget)
-    const updatedManifestContent = JSON.stringify(manifest, null, 2) + '\n'
+    const indentation = core.getInput('indentation') ?? '2'
+    const indent =
+      indentation === 'tab' ? '\t' : ' '.repeat(parseInt(indentation))
+    const formattedManifestJSON =
+      JSON.stringify(manifest, null, 2).replace(/ {2}/g, indent) + '\n'
+    const updatedManifestContent = formattedManifestJSON
     const { data: manifestBlob } = await this.octokit.git.createBlob({
       owner: this.releaseContext.owner,
       repo: this.releaseContext.repo,
