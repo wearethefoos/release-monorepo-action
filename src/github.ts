@@ -666,7 +666,9 @@ export class GitHubService {
     // Get all releases for the repository
     const { data: releases } = await this.octokit.repos.listReleases({
       owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo
+      repo: this.releaseContext.repo,
+      sort: 'created',
+      direction: 'desc'
     })
 
     // Find the most recent non-prerelease release (for any package)
