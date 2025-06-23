@@ -61,7 +61,11 @@ function getAugmentedNamespace(n) {
   var f = n.default;
 	if (typeof f == "function") {
 		var a = function a () {
-			if (this instanceof a) {
+			var isInstance = false;
+      try {
+        isInstance = this instanceof a;
+      } catch {}
+			if (isInstance) {
         return Reflect.construct(f, arguments, this.constructor);
 			}
 			return f.apply(this, arguments);
@@ -40582,7 +40586,9 @@ class GitHubService {
         try {
             const { data: releases } = await this.octokit.repos.listReleases({
                 owner: this.releaseContext.owner,
-                repo: this.releaseContext.repo
+                repo: this.releaseContext.repo,
+                sort: 'created',
+                direction: 'desc'
             });
             // Find the most recent non-prerelease release for this package
             const lastRelease = releases.find((release) => {
@@ -40684,7 +40690,9 @@ class GitHubService {
         try {
             const { data: releases } = await this.octokit.repos.listReleases({
                 owner: this.releaseContext.owner,
-                repo: this.releaseContext.repo
+                repo: this.releaseContext.repo,
+                sort: 'created',
+                direction: 'desc'
             });
             // Find the latest RC version for this package
             const rcRegex = new RegExp(`${packagePath}-v${baseVersion}-rc\\.(\\d+)`);

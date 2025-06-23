@@ -969,7 +969,9 @@ export class GitHubService {
     try {
       const { data: releases } = await this.octokit.repos.listReleases({
         owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo
+        repo: this.releaseContext.repo,
+        sort: 'created',
+        direction: 'desc'
       })
 
       // Find the most recent non-prerelease release for this package
@@ -1092,7 +1094,9 @@ export class GitHubService {
     try {
       const { data: releases } = await this.octokit.repos.listReleases({
         owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo
+        repo: this.releaseContext.repo,
+        sort: 'created',
+        direction: 'desc'
       })
 
       // Find the latest RC version for this package
