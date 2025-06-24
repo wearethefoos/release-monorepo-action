@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.7](https://github.com/wearethefoos/release-monorepo-action/compare/v1.1.6...v1.1.7) (2025-06-24)
+
+### 🐛 Fixes
+
+- use tags to fetch releases in descending order (#43)
+
 ## [1.1.6](https://github.com/wearethefoos/release-monorepo-action/compare/v1.1.5...v1.1.6) (2025-06-23)
 
 ### 🐛 Fixes
