@@ -663,21 +663,13 @@ export class GitHubService {
   async getAllCommitsSinceLastRelease(
     checkPaths: boolean = true
   ): Promise<Commit[]> {
-    // Get all releases for the repository
-    const { data: releases } = await this.octokit.repos.listReleases({
-      owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo,
-      sort: 'created',
-      direction: 'desc'
-    })
-
-    // Find the most recent non-prerelease release (for any package)
-    const lastRelease = releases.find((release) => !release.prerelease)
+    // Get the most recent non-prerelease release tag (for any package)
+    const lastReleaseTag = await this.getLatestReleaseTag()
 
     // If no release found, get commits since the beginning
     let base: string
-    if (lastRelease) {
-      base = lastRelease.tag_name
+    if (lastReleaseTag) {
+      base = lastReleaseTag
     } else {
       // Get total commit count and use that to look back
       const totalCommits = await this.getCommitCount()
@@ -763,45 +755,305 @@ export class GitHubService {
   }
 
   /**
-   * Filter the provided commits for those that touch the given packagePath.
-   * If commits are not provided, fetches all since last release.
+   * Get tags sorted by creation date (newest first) with error handling.
    */
-  async getCommitsSinceLastRelease(
-    packagePath: string,
-    allCommits?: Commit[]
-  ): Promise<string[]> {
-    const isSubPackage = packagePath !== '.'
-
-    // If allCommits is not provided, fetch them
-    if (!allCommits) {
-      allCommits = await this.getAllCommitsSinceLastRelease(isSubPackage)
-    }
-
-    // If there are no commits, return early
-    if (!allCommits || allCommits.length === 0) {
+  private async getSortedTags(
+    perPage: number = 100
+  ): Promise<{ name: string }[]> {
+    try {
+      const { data: tags } = await this.octokit.repos.listTags({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        per_page: perPage,
+        sort: 'created',
+        direction: 'desc'
+      })
+      return tags
+    } catch (error) {
+      console.warn('Error getting tags:', error)
       return []
     }
+  }
 
-    // For root package ('.'), return all commit messages
-    if (!isSubPackage) {
-      return allCommits.map((commit) => commit.commit.message)
-    }
-
-    // For subpackages, filter commits that touch files in the package path
-    const filteredCommits = allCommits.filter((commit) => {
-      // Check if any files in the commit are within the package path
-      core.info(
-        `Checking ${commit.files?.length ?? '(no files)'} files in commit ${commit.commit.message}`
-      )
-      return commit.files?.some((file: CommitFile) => {
-        core.debug(
-          `Checking commit ${commit.sha} for ${packagePath} in ${file.filename}`
-        )
-        return file.filename.startsWith(packagePath)
+  /**
+   * Get releases sorted by creation date (newest first) with error handling.
+   */
+  private async getSortedReleases(): Promise<
+    { tag_name: string; prerelease: boolean; created_at: string }[]
+  > {
+    try {
+      const { data: releases } = await this.octokit.repos.listReleases({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo
       })
+
+      // Sort releases by created_at date in descending order (newest first)
+      return releases.sort((a, b) => {
+        const dateA = new Date(a.created_at).getTime()
+        const dateB = new Date(b.created_at).getTime()
+        return dateB - dateA
+      })
+    } catch (error) {
+      console.warn('Error getting releases:', error)
+      return []
+    }
+  }
+
+  /**
+   * Check if a tag name is a prerelease tag.
+   */
+  private isPrereleaseTag(tagName: string): boolean {
+    return (
+      tagName.includes('-rc.') ||
+      tagName.includes('-alpha') ||
+      tagName.includes('-beta') ||
+      tagName.includes('-pre')
+    )
+  }
+
+  async getLastReleaseVersion(packagePath: string): Promise<string | null> {
+    try {
+      // Try to get the latest release using tags first (more efficient)
+      const lastReleaseFromTags =
+        await this.getLastReleaseVersionFromTags(packagePath)
+      if (lastReleaseFromTags) {
+        return lastReleaseFromTags
+      }
+
+      // Fallback to releases if tags don't work
+      const sortedReleases = await this.getSortedReleases()
+
+      // Find the most recent non-prerelease release for this package
+      const lastRelease = sortedReleases.find((release) => {
+        if (release.prerelease) return false
+        const tagName = release.tag_name
+        if (packagePath === '.') {
+          // For root package, look for tags without package prefix
+          return !tagName.includes('/')
+        } else {
+          // For specific packages, look for tags with package prefix
+          return tagName.startsWith(`${packagePath}-v`)
+        }
+      })
+
+      return lastRelease ? lastRelease.tag_name : null
+    } catch (error) {
+      console.warn('Error getting last release version:', error)
+      return null
+    }
+  }
+
+  private async getLastReleaseVersionFromTags(
+    packagePath: string
+  ): Promise<string | null> {
+    const tags = await this.getSortedTags()
+
+    // Find the most recent non-prerelease tag for this package
+    const lastTag = tags.find((tag) => {
+      const tagName = tag.name
+
+      // Skip prerelease tags
+      if (this.isPrereleaseTag(tagName)) {
+        return false
+      }
+
+      if (packagePath === '.') {
+        // For root package, look for tags without package prefix
+        return !tagName.includes('/') && tagName.startsWith('v')
+      } else {
+        // For specific packages, look for tags with package prefix
+        return tagName.startsWith(`${packagePath}-v`)
+      }
     })
 
-    return filteredCommits.map((commit) => commit.commit.message)
+    return lastTag ? lastTag.name : null
+  }
+
+  async getLatestRcVersion(
+    packagePath: string,
+    baseVersion: string
+  ): Promise<number> {
+    try {
+      // Try to get the latest RC version using tags first (more efficient)
+      const latestRcFromTags = await this.getLatestRcVersionFromTags(
+        packagePath,
+        baseVersion
+      )
+      if (latestRcFromTags !== null) {
+        return latestRcFromTags + 1 // Return next RC number
+      }
+
+      // Fallback to releases if tags don't work
+      const sortedReleases = await this.getSortedReleases()
+
+      // Find the latest RC version for this package
+      const rcRegex = new RegExp(`${packagePath}-v${baseVersion}-rc\\.(\\d+)`)
+      const latestRc = sortedReleases
+        .filter((release) => rcRegex.test(release.tag_name))
+        .map((release) => {
+          const match = release.tag_name.match(rcRegex)
+          return match ? parseInt(match[1]) : 0
+        })
+        .sort((a, b) => b - a)[0]
+
+      return (latestRc || 0) + 1 // Return next RC number
+    } catch (error) {
+      console.warn('Error getting latest RC version:', error)
+      return 1 // Default to RC.1 if error
+    }
+  }
+
+  private async getLatestRcVersionFromTags(
+    packagePath: string,
+    baseVersion: string
+  ): Promise<number | null> {
+    const tags = await this.getSortedTags()
+
+    // Find the latest RC version for this package
+    const rcRegex = new RegExp(`${packagePath}-v${baseVersion}-rc\\.(\\d+)`)
+    const latestRc = tags
+      .filter((tag) => rcRegex.test(tag.name))
+      .map((tag) => {
+        const match = tag.name.match(rcRegex)
+        return match ? parseInt(match[1]) : 0
+      })
+      .sort((a, b) => b - a)[0]
+
+    return latestRc || null
+  }
+
+  /**
+   * Get the most recent non-prerelease release tag (for any package).
+   * Uses hybrid approach: tags first, then fallback to releases.
+   */
+  private async getLatestReleaseTag(): Promise<string | null> {
+    try {
+      // Try to get the latest release using tags first (more efficient)
+      const latestTag = await this.getLatestReleaseTagFromTags()
+      if (latestTag) {
+        return latestTag
+      }
+
+      // Fallback to releases if tags don't work
+      const sortedReleases = await this.getSortedReleases()
+
+      // Find the most recent non-prerelease release (for any package)
+      const lastRelease = sortedReleases.find((release) => !release.prerelease)
+
+      return lastRelease ? lastRelease.tag_name : null
+    } catch (error) {
+      console.warn('Error getting latest release tag:', error)
+      return null
+    }
+  }
+
+  /**
+   * Get the most recent non-prerelease release tag using the tags API.
+   */
+  private async getLatestReleaseTagFromTags(): Promise<string | null> {
+    const tags = await this.getSortedTags()
+
+    // Find the most recent non-prerelease tag (for any package)
+    const lastTag = tags.find((tag) => {
+      const tagName = tag.name
+
+      // Skip prerelease tags
+      if (this.isPrereleaseTag(tagName)) {
+        return false
+      }
+
+      // Accept any non-prerelease tag
+      return true
+    })
+
+    return lastTag ? lastTag.name : null
+  }
+
+  async getChangelogForPackage(packagePath: string): Promise<string> {
+    try {
+      const changelogPath = path.join(packagePath, 'CHANGELOG.md')
+      const { data } = await this.octokit.repos.getContent({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        path: changelogPath,
+        ref: 'main'
+      })
+
+      if (!('content' in data)) {
+        return ''
+      }
+
+      const content = Buffer.from(data.content, 'base64').toString('utf-8')
+      const lines = content.split('\n')
+
+      // Find the first version section
+      const versionIndex = lines.findIndex((line) => line.startsWith('## '))
+      if (versionIndex === -1) return ''
+
+      // Get everything up to the next version section or end of file
+      const nextVersionIndex = lines.findIndex(
+        (line, i) => i > versionIndex && line.startsWith('## ')
+      )
+      const endIndex = nextVersionIndex === -1 ? lines.length : nextVersionIndex
+
+      return lines.slice(versionIndex, endIndex).join('\n').trim()
+    } catch (error) {
+      core.warning(`Failed to get changelog for ${packagePath}: ${error}`)
+      return ''
+    }
+  }
+
+  async findReleasePRByVersions(
+    manifest: PackageManifest,
+    releaseTarget: string
+  ): Promise<number | null> {
+    try {
+      // Get all closed PRs with release-me label
+      const { data: prs } = await this.octokit.pulls.list({
+        owner: this.releaseContext.owner,
+        repo: this.releaseContext.repo,
+        state: 'closed',
+        labels: ['release-me', `release-target:${releaseTarget}`],
+        sort: 'updated',
+        direction: 'desc',
+        per_page: 10 // Look at the 10 most recent ones
+      })
+
+      // Convert manifest to PackageChanges format
+      const changes: PackageChanges[] = Object.entries(manifest).map(
+        ([path, newVersion]) => ({
+          name: basename(path),
+          path,
+          currentVersion: '', // We don't need this for title matching
+          newVersion: newVersion.latest,
+          commits: [], // We don't need this for title matching
+          changelog: '', // We don't need this for title matching
+          releaseTarget: 'main'
+        })
+      )
+
+      // Generate the expected title
+      const expectedTitle = this.generateReleasePRTitle(changes)
+
+      // Find the first PR that matches our title
+      const matchingPR = prs.find((pr) => pr.title === expectedTitle)
+      return matchingPR ? matchingPR.number : null
+    } catch (error) {
+      core.warning(`Failed to find release PR: ${error}`)
+      return null
+    }
+  }
+
+  async createComment(body: string): Promise<void> {
+    if (!this.releaseContext.pullRequestNumber) {
+      return
+    }
+    await this.octokit.issues.createComment({
+      owner: this.releaseContext.owner,
+      repo: this.releaseContext.repo,
+      issue_number: this.releaseContext.pullRequestNumber,
+      body
+    })
   }
 
   async updatePackageVersion(
@@ -965,159 +1217,6 @@ export class GitHubService {
     }
   }
 
-  async getLastReleaseVersion(packagePath: string): Promise<string | null> {
-    try {
-      const { data: releases } = await this.octokit.repos.listReleases({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        sort: 'created',
-        direction: 'desc'
-      })
-
-      // Find the most recent non-prerelease release for this package
-      const lastRelease = releases.find((release) => {
-        if (release.prerelease) return false
-        const tagName = release.tag_name
-        if (packagePath === '.') {
-          return tagName.startsWith('v')
-        }
-        return tagName.startsWith(`${packagePath}-v`)
-      })
-
-      if (!lastRelease) return null
-
-      // Extract version from tag name
-      const tagName = lastRelease.tag_name
-      if (packagePath === '.') {
-        return tagName.substring(1) // Remove 'v' prefix
-      }
-      return tagName.substring(packagePath.length + 2) // Remove 'packagePath-v' prefix
-    } catch (error) {
-      core.warning(
-        `Failed to get last release version for ${packagePath}: ${error}`
-      )
-      return null
-    }
-  }
-
-  async getChangelogForPackage(packagePath: string): Promise<string> {
-    try {
-      const changelogPath = path.join(packagePath, 'CHANGELOG.md')
-      const { data } = await this.octokit.repos.getContent({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        path: changelogPath,
-        ref: 'main'
-      })
-
-      if (!('content' in data)) {
-        return ''
-      }
-
-      const content = Buffer.from(data.content, 'base64').toString('utf-8')
-      const lines = content.split('\n')
-
-      // Find the first version section
-      const versionIndex = lines.findIndex((line) => line.startsWith('## '))
-      if (versionIndex === -1) return ''
-
-      // Get everything up to the next version section or end of file
-      const nextVersionIndex = lines.findIndex(
-        (line, i) => i > versionIndex && line.startsWith('## ')
-      )
-      const endIndex = nextVersionIndex === -1 ? lines.length : nextVersionIndex
-
-      return lines.slice(versionIndex, endIndex).join('\n').trim()
-    } catch (error) {
-      core.warning(`Failed to get changelog for ${packagePath}: ${error}`)
-      return ''
-    }
-  }
-
-  async findReleasePRByVersions(
-    manifest: PackageManifest,
-    releaseTarget: string
-  ): Promise<number | null> {
-    try {
-      // Get all closed PRs with release-me label
-      const { data: prs } = await this.octokit.pulls.list({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        state: 'closed',
-        labels: ['release-me', `release-target:${releaseTarget}`],
-        sort: 'updated',
-        direction: 'desc',
-        per_page: 10 // Look at the 10 most recent ones
-      })
-
-      // Convert manifest to PackageChanges format
-      const changes: PackageChanges[] = Object.entries(manifest).map(
-        ([path, newVersion]) => ({
-          name: basename(path),
-          path,
-          currentVersion: '', // We don't need this for title matching
-          newVersion: newVersion.latest,
-          commits: [], // We don't need this for title matching
-          changelog: '', // We don't need this for title matching
-          releaseTarget: 'main'
-        })
-      )
-
-      // Generate the expected title
-      const expectedTitle = this.generateReleasePRTitle(changes)
-
-      // Find the first PR that matches our title
-      const matchingPR = prs.find((pr) => pr.title === expectedTitle)
-      return matchingPR ? matchingPR.number : null
-    } catch (error) {
-      core.warning(`Failed to find release PR: ${error}`)
-      return null
-    }
-  }
-
-  async createComment(body: string): Promise<void> {
-    if (!this.releaseContext.pullRequestNumber) {
-      return
-    }
-    await this.octokit.issues.createComment({
-      owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo,
-      issue_number: this.releaseContext.pullRequestNumber,
-      body
-    })
-  }
-
-  async getLatestRcVersion(
-    packagePath: string,
-    baseVersion: string
-  ): Promise<number> {
-    try {
-      const { data: releases } = await this.octokit.repos.listReleases({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        sort: 'created',
-        direction: 'desc'
-      })
-
-      // Find the latest RC version for this package
-      const rcRegex = new RegExp(`${packagePath}-v${baseVersion}-rc\\.(\\d+)`)
-      const latestRc = releases
-        .filter((release) => rcRegex.test(release.tag_name))
-        .sort((a, b) => {
-          const aMatch = a.tag_name.match(rcRegex)
-          const bMatch = b.tag_name.match(rcRegex)
-          if (!aMatch || !bMatch) return 0
-          return parseInt(bMatch[1]) - parseInt(aMatch[1])
-        })[0]
-
-      // Return the next RC number
-      return latestRc ? parseInt(latestRc.tag_name.match(rcRegex)![1]) + 1 : 1
-    } catch (error) {
-      core.warning(`Failed to get latest RC version: ${error}`)
-      return 1
-    }
-  }
-
   async updateManifest(
     manifest: PackageManifest,
     changes: PackageChanges[],
@@ -1155,5 +1254,47 @@ export class GitHubService {
       }
     }
     return changes
+  }
+
+  /**
+   * Filter the provided commits for those that touch the given packagePath.
+   * If commits are not provided, fetches all since last release.
+   */
+  async getCommitsSinceLastRelease(
+    packagePath: string,
+    allCommits?: Commit[]
+  ): Promise<string[]> {
+    const isSubPackage = packagePath !== '.'
+
+    // If allCommits is not provided, fetch them
+    if (!allCommits) {
+      allCommits = await this.getAllCommitsSinceLastRelease(isSubPackage)
+    }
+
+    // If there are no commits, return early
+    if (!allCommits || allCommits.length === 0) {
+      return []
+    }
+
+    // For root package ('.'), return all commit messages
+    if (!isSubPackage) {
+      return allCommits.map((commit) => commit.commit.message)
+    }
+
+    // For subpackages, filter commits that touch files in the package path
+    const filteredCommits = allCommits.filter((commit) => {
+      // Check if any files in the commit are within the package path
+      core.info(
+        `Checking ${commit.files?.length ?? '(no files)'} files in commit ${commit.commit.message}`
+      )
+      return commit.files?.some((file: CommitFile) => {
+        core.debug(
+          `Checking commit ${commit.sha} for ${packagePath} in ${file.filename}`
+        )
+        return file.filename.startsWith(packagePath)
+      })
+    })
+
+    return filteredCommits.map((commit) => commit.commit.message)
   }
 }
