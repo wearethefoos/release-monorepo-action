@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.8](https://github.com/wearethefoos/release-monorepo-action/compare/v1.1.7...v1.1.8) (2025-06-25)
+
+### 🐛 Fixes
+
+- compiled map
+
 ## [1.1.7](https://github.com/wearethefoos/release-monorepo-action/compare/v1.1.6...v1.1.7) (2025-06-24)
 
 ### 🐛 Fixes
