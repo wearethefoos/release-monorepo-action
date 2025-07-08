@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.9](https://github.com/wearethefoos/release-monorepo-action/compare/v1.1.8...v1.1.9) (2025-07-08)
+
+### 🐛 Fixes
+
+- fetch latest releases in large monorepo setups
+
 ## [1.1.8](https://github.com/wearethefoos/release-monorepo-action/compare/v1.1.7...v1.1.8) (2025-06-25)
 
 ### 🐛 Fixes
