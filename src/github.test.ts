@@ -29,7 +29,8 @@ const mockOctokit = {
     createOrUpdateFileContents: vi.fn(),
     getContent: vi.fn(),
     listPullRequestsAssociatedWithCommit: vi.fn(),
-    getCommit: vi.fn()
+    getCommit: vi.fn(),
+    getLatestRelease: vi.fn()
   },
   git: {
     createRef: vi.fn(),
@@ -176,6 +177,14 @@ describe('GitHubService', () => {
 
   describe('getCommitsSinceLastRelease', () => {
     it('should return commits since last release', async () => {
+      // Mock getLatestRelease to return a release
+      mockOctokit.repos.getLatestRelease.mockResolvedValue({
+        data: {
+          tag_name: 'core-v1.0.0',
+          prerelease: false
+        }
+      })
+
       // Mock listTags to return no results (fallback to releases)
       mockOctokit.repos.listTags.mockResolvedValue({
         data: []
@@ -184,7 +193,7 @@ describe('GitHubService', () => {
       const mockReleases = {
         data: [
           {
-            tag_name: 'packages/core-v1.0.0',
+            tag_name: 'core-v1.0.0',
             prerelease: false
           }
         ]
@@ -217,6 +226,14 @@ describe('GitHubService', () => {
     })
 
     it('should handle no previous release', async () => {
+      // Mock getLatestRelease to return null (no release)
+      mockOctokit.repos.getLatestRelease.mockResolvedValue({
+        data: {
+          tag_name: 'core-v1.0.0-rc.1',
+          prerelease: true
+        }
+      })
+
       // Mock listTags to return no results (fallback to releases)
       mockOctokit.repos.listTags.mockResolvedValue({
         data: []
@@ -257,6 +274,14 @@ describe('GitHubService', () => {
     })
 
     it('should ignore prereleases when finding last release', async () => {
+      // Mock getLatestRelease to return a prerelease (should be ignored)
+      mockOctokit.repos.getLatestRelease.mockResolvedValue({
+        data: {
+          tag_name: 'core-v1.1.0-rc.1',
+          prerelease: true
+        }
+      })
+
       // Mock listTags to return no results (fallback to releases)
       mockOctokit.repos.listTags.mockResolvedValue({
         data: []
@@ -265,14 +290,15 @@ describe('GitHubService', () => {
       const mockReleases = {
         data: [
           {
-            tag_name: 'packages/core-v1.1.0-rc.1',
+            tag_name: 'core-v1.1.0-rc.1',
             prerelease: true
           },
           {
-            tag_name: 'packages/core-v1.0.0',
+            tag_name: 'core-v1.0.0',
             prerelease: false
           }
-        ]
+        ],
+        headers: {}
       }
       mockOctokit.repos.listReleases.mockResolvedValue(mockReleases)
       mockOctokit.request
@@ -296,6 +322,14 @@ describe('GitHubService', () => {
     })
 
     it('should sort releases by created_at date in descending order', async () => {
+      // Mock getLatestRelease to return a release
+      mockOctokit.repos.getLatestRelease.mockResolvedValue({
+        data: {
+          tag_name: 'core-v1.1.0',
+          prerelease: false
+        }
+      })
+
       // Mock listTags to return no results (fallback to releases)
       mockOctokit.repos.listTags.mockResolvedValue({
         data: []
@@ -304,12 +338,12 @@ describe('GitHubService', () => {
       const mockReleases = {
         data: [
           {
-            tag_name: 'packages/core-v1.0.0',
+            tag_name: 'core-v1.0.0',
             prerelease: false,
             created_at: '2023-01-01T00:00:00Z'
           },
           {
-            tag_name: 'packages/core-v1.1.0',
+            tag_name: 'core-v1.1.0',
             prerelease: false,
             created_at: '2023-01-02T00:00:00Z'
           }
@@ -345,7 +379,7 @@ describe('GitHubService', () => {
       const mockReleases = {
         data: [
           {
-            tag_name: 'packages/core-v1.0.0',
+            tag_name: 'core-v1.0.0',
             prerelease: false
           }
         ]
@@ -376,13 +410,22 @@ describe('GitHubService', () => {
     })
 
     it('should use commit count for fallback when no release exists', async () => {
+      // Mock getLatestRelease to return a prerelease (should be ignored)
+      mockOctokit.repos.getLatestRelease.mockResolvedValue({
+        data: {
+          tag_name: 'core-v1.0.0-rc.1',
+          prerelease: true
+        }
+      })
+
       // Mock listTags to return no results (fallback to releases)
       mockOctokit.repos.listTags.mockResolvedValue({
         data: []
       })
 
       const mockReleases = {
-        data: []
+        data: [],
+        headers: {}
       }
       const mockResponse = {
         headers: {
@@ -416,13 +459,22 @@ describe('GitHubService', () => {
     })
 
     it('should limit fallback to 50 commits', async () => {
+      // Mock getLatestRelease to return a prerelease (should be ignored)
+      mockOctokit.repos.getLatestRelease.mockResolvedValue({
+        data: {
+          tag_name: 'core-v1.0.0-rc.1',
+          prerelease: true
+        }
+      })
+
       // Mock listTags to return no results (fallback to releases)
       mockOctokit.repos.listTags.mockResolvedValue({
         data: []
       })
 
       const mockReleases = {
-        data: []
+        data: [],
+        headers: {}
       }
       const mockResponse = {
         headers: {
@@ -1655,7 +1707,8 @@ describe('GitHubService', () => {
         data: [
           { tag_name: 'v1.0.0', prerelease: false },
           { tag_name: 'v0.9.0', prerelease: false }
-        ]
+        ],
+        headers: {}
       })
 
       const version = await githubService.getLastReleaseVersion('.')
@@ -1670,13 +1723,14 @@ describe('GitHubService', () => {
 
       mockOctokit.repos.listReleases.mockResolvedValue({
         data: [
-          { tag_name: 'packages/core-v1.0.0', prerelease: false },
-          { tag_name: 'packages/core-v0.9.0', prerelease: false }
-        ]
+          { tag_name: 'core-v1.0.0', prerelease: false },
+          { tag_name: 'core-v0.9.0', prerelease: false }
+        ],
+        headers: {}
       })
 
       const version = await githubService.getLastReleaseVersion('packages/core')
-      expect(version).toBe('packages/core-v1.0.0')
+      expect(version).toBe('core-v1.0.0')
     })
 
     it('should ignore prereleases', async () => {
@@ -1689,7 +1743,8 @@ describe('GitHubService', () => {
         data: [
           { tag_name: 'v1.0.0-rc.1', prerelease: true },
           { tag_name: 'v0.9.0', prerelease: false }
-        ]
+        ],
+        headers: {}
       })
 
       const version = await githubService.getLastReleaseVersion('.')
@@ -1703,7 +1758,8 @@ describe('GitHubService', () => {
       })
 
       mockOctokit.repos.listReleases.mockResolvedValue({
-        data: []
+        data: [],
+        headers: {}
       })
 
       const version = await githubService.getLastReleaseVersion('.')
@@ -1900,9 +1956,10 @@ describe('GitHubService', () => {
 
       const mockReleases = {
         data: [
-          { tag_name: 'packages/core-v1.0.0-rc.2', prerelease: true },
-          { tag_name: 'packages/core-v1.0.0-rc.1', prerelease: true }
-        ]
+          { tag_name: 'core-v1.0.0-rc.2', prerelease: true },
+          { tag_name: 'core-v1.0.0-rc.1', prerelease: true }
+        ],
+        headers: {}
       }
       mockOctokit.repos.listReleases.mockResolvedValue(mockReleases)
 
@@ -1920,7 +1977,8 @@ describe('GitHubService', () => {
       })
 
       const mockReleases = {
-        data: []
+        data: [],
+        headers: {}
       }
       mockOctokit.repos.listReleases.mockResolvedValue(mockReleases)
 
