@@ -40436,16 +40436,33 @@ class GitHubService {
         }
     }
     /**
-     * Get releases sorted by creation date (newest first) with error handling.
+     * Get releases sorted by creation date (newest first).
      */
     async getSortedReleases() {
         try {
-            const { data: releases } = await this.octokit.repos.listReleases({
-                owner: this.releaseContext.owner,
-                repo: this.releaseContext.repo
-            });
-            // Sort releases by created_at date in descending order (newest first)
-            return releases.sort((a, b) => {
+            let allReleases = [];
+            let page = 1;
+            let hasMorePages = true;
+            while (hasMorePages) {
+                coreExports.debug(`Fetching page ${page} of releases...`);
+                const response = await this.octokit.repos.listReleases({
+                    owner: this.releaseContext.owner,
+                    repo: this.releaseContext.repo,
+                    per_page: 100,
+                    page
+                });
+                // If there are no releases in the response, break early
+                if (!response.data || response.data.length === 0) {
+                    break;
+                }
+                allReleases = allReleases.concat(response.data);
+                // Check if we have more pages
+                const linkHeader = response.headers.link;
+                hasMorePages = linkHeader?.includes('rel="next"') ?? false;
+                page++;
+            }
+            coreExports.debug(`Found ${allReleases.length} releases`);
+            return allReleases.sort((a, b) => {
                 const dateA = new Date(a.created_at).getTime();
                 const dateB = new Date(b.created_at).getTime();
                 return dateB - dateA;
@@ -40485,7 +40502,8 @@ class GitHubService {
                 }
                 else {
                     // For specific packages, look for tags with package prefix
-                    return tagName.startsWith(`${packagePath}-v`);
+                    const packageName = path.basename(packagePath);
+                    return tagName.startsWith(`${packageName}-v`);
                 }
             });
             return lastRelease ? lastRelease.tag_name : null;
@@ -40510,7 +40528,8 @@ class GitHubService {
             }
             else {
                 // For specific packages, look for tags with package prefix
-                return tagName.startsWith(`${packagePath}-v`);
+                const packageName = path.basename(packagePath);
+                return tagName.startsWith(`${packageName}-v`);
             }
         });
         return lastTag ? lastTag.name : null;
@@ -40525,7 +40544,8 @@ class GitHubService {
             // Fallback to releases if tags don't work
             const sortedReleases = await this.getSortedReleases();
             // Find the latest RC version for this package
-            const rcRegex = new RegExp(`${packagePath}-v${baseVersion}-rc\\.(\\d+)`);
+            const packageName = path.basename(packagePath);
+            const rcRegex = new RegExp(`${packageName}-v${baseVersion}-rc\\.(\\d+)`);
             const latestRc = sortedReleases
                 .filter((release) => rcRegex.test(release.tag_name))
                 .map((release) => {
@@ -40553,6 +40573,16 @@ class GitHubService {
             .sort((a, b) => b - a)[0];
         return latestRc || null;
     }
+    async getLatestReleaseTagName() {
+        const latestRelease = await this.octokit.repos.getLatestRelease({
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo
+        });
+        if (!latestRelease || latestRelease.data.prerelease) {
+            return null;
+        }
+        return latestRelease.data.tag_name;
+    }
     /**
      * Get the most recent non-prerelease release tag (for any package).
      * Uses hybrid approach: tags first, then fallback to releases.
@@ -40560,7 +40590,7 @@ class GitHubService {
     async getLatestReleaseTag() {
         try {
             // Try to get the latest release using tags first (more efficient)
-            const latestTag = await this.getLatestReleaseTagFromTags();
+            const latestTag = await this.getLatestReleaseTagName();
             if (latestTag) {
                 return latestTag;
             }
@@ -40574,23 +40604,6 @@ class GitHubService {
             console.warn('Error getting latest release tag:', error);
             return null;
         }
-    }
-    /**
-     * Get the most recent non-prerelease release tag using the tags API.
-     */
-    async getLatestReleaseTagFromTags() {
-        const tags = await this.getSortedTags();
-        // Find the most recent non-prerelease tag (for any package)
-        const lastTag = tags.find((tag) => {
-            const tagName = tag.name;
-            // Skip prerelease tags
-            if (this.isPrereleaseTag(tagName)) {
-                return false;
-            }
-            // Accept any non-prerelease tag
-            return true;
-        });
-        return lastTag ? lastTag.name : null;
     }
     async getChangelogForPackage(packagePath) {
         try {
