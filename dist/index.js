@@ -40888,7 +40888,7 @@ async function run() {
         coreExports.setOutput('versions', '[]');
         coreExports.setOutput('version', '');
         if (releaseTarget === 'latest') {
-            throw new Error('release-target cannot be "latest", because it is reserved for the latest release');
+            coreExports.warning('Setting release-target to "latest" will only update the latest release version');
         }
         const github = new GitHubService(token);
         const labels = await github.getPullRequestLabels();

@@ -30,8 +30,8 @@ export async function run(): Promise<void> {
     core.setOutput('version', '')
 
     if (releaseTarget === 'latest') {
-      throw new Error(
-        'release-target cannot be "latest", because it is reserved for the latest release'
+      core.warning(
+        'Setting release-target to "latest" will only update the latest release version'
       )
     }
 

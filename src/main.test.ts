@@ -7,6 +7,9 @@ vi.mock('@actions/core', () => ({
   info: vi.fn().mockImplementation((...args: unknown[]) => {
     console.log('[core.info]', ...args)
   }),
+  warning: vi.fn().mockImplementation((...args: unknown[]) => {
+    console.log('[core.warning]', ...args)
+  }),
   debug: vi.fn().mockImplementation((...args: unknown[]) => {
     console.log('[core.debug]', ...args)
   }),
@@ -451,14 +454,14 @@ describe('main.ts', () => {
     expect(core.setOutput).toHaveBeenCalledWith('prerelease', true)
   })
 
-  it('should throw error if release-target is "latest"', async () => {
+  it('should warn if release-target is "latest"', async () => {
     ;(core.getInput as Mock).mockImplementation((name: string) => {
       if (name === 'release-target') return 'latest'
       return ''
     })
     await run()
-    expect(core.setFailed).toHaveBeenCalledWith(
-      'release-target cannot be "latest", because it is reserved for the latest release'
+    expect(core.warning).toHaveBeenCalledWith(
+      'Setting release-target to "latest" will only update the latest release version'
     )
   })
 })
