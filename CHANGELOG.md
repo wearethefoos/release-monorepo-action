@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.11](https://github.com/wearethefoos/release-monorepo-action/compare/v1.1.10...v1.1.11) (2025-09-25)
+
+### 🐛 Fixes
+
+- allow "latest" as a release target
+
 ## [1.1.10](https://github.com/wearethefoos/release-monorepo-action/compare/v1.1.9...v1.1.10) (2025-07-08)
 
 ### 🐛 Fixes
