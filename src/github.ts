@@ -198,23 +198,28 @@ export class GitHubService {
     for (const change of changes) {
       await this.updatePackageVersion(change.path, change.newVersion)
 
-      // Add the updated package.json to the tree
-      const packageJsonPath = path.join(change.path, 'package.json')
-      if (fs.existsSync(packageJsonPath)) {
-        const content = fs.readFileSync(packageJsonPath, 'utf-8')
-        const { data: blob } = await this.octokit.git.createBlob({
-          owner: this.releaseContext.owner,
-          repo: this.releaseContext.repo,
-          content,
-          encoding: 'utf-8'
-        })
-        treeItems.push({
-          path: packageJsonPath,
+      // Add the updated version file to the tree
+      for const filePath of [
+        path.join(change.path, 'package.json'),
+        path.join(change.path, 'Cargo.toml')
+        path.join(change.path, 'version.txt')
+      ]) {
+        if (fs.existsSync(filePath)) {
+          const content = fs.readFileSync(filePath, 'utf-8')
+          const { data: blob } = await this.octokit.git.createBlob({
+            owner: this.releaseContext.owner,
+            repo: this.releaseContext.repo,
+            content,
+            encoding: 'utf-8'
+          })
+          treeItems.push({
+          path: filePath,
           mode: '100644' as const,
           type: 'blob' as const,
           sha: blob.sha
         })
       }
+    }
 
       // Add/update the changelog
       const changelogPath = path.join(change.path, 'CHANGELOG.md')
