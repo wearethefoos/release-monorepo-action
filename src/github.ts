@@ -199,9 +199,9 @@ export class GitHubService {
       await this.updatePackageVersion(change.path, change.newVersion)
 
       // Add the updated version file to the tree
-      for const filePath of [
+      for (const filePath of [
         path.join(change.path, 'package.json'),
-        path.join(change.path, 'Cargo.toml')
+        path.join(change.path, 'Cargo.toml'),
         path.join(change.path, 'version.txt')
       ]) {
         if (fs.existsSync(filePath)) {
@@ -213,13 +213,13 @@ export class GitHubService {
             encoding: 'utf-8'
           })
           treeItems.push({
-          path: filePath,
-          mode: '100644' as const,
-          type: 'blob' as const,
-          sha: blob.sha
-        })
+            path: filePath,
+            mode: '100644' as const,
+            type: 'blob' as const,
+            sha: blob.sha
+          })
+        }
       }
-    }
 
       // Add/update the changelog
       const changelogPath = path.join(change.path, 'CHANGELOG.md')

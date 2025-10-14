@@ -39960,22 +39960,27 @@ class GitHubService {
         const treeItems = [];
         for (const change of changes) {
             await this.updatePackageVersion(change.path, change.newVersion);
-            // Add the updated package.json to the tree
-            const packageJsonPath = path__namespace.join(change.path, 'package.json');
-            if (fs__namespace.existsSync(packageJsonPath)) {
-                const content = fs__namespace.readFileSync(packageJsonPath, 'utf-8');
-                const { data: blob } = await this.octokit.git.createBlob({
-                    owner: this.releaseContext.owner,
-                    repo: this.releaseContext.repo,
-                    content,
-                    encoding: 'utf-8'
-                });
-                treeItems.push({
-                    path: packageJsonPath,
-                    mode: '100644',
-                    type: 'blob',
-                    sha: blob.sha
-                });
+            // Add the updated version file to the tree
+            for (const filePath of [
+                path__namespace.join(change.path, 'package.json'),
+                path__namespace.join(change.path, 'Cargo.toml'),
+                path__namespace.join(change.path, 'version.txt')
+            ]) {
+                if (fs__namespace.existsSync(filePath)) {
+                    const content = fs__namespace.readFileSync(filePath, 'utf-8');
+                    const { data: blob } = await this.octokit.git.createBlob({
+                        owner: this.releaseContext.owner,
+                        repo: this.releaseContext.repo,
+                        content,
+                        encoding: 'utf-8'
+                    });
+                    treeItems.push({
+                        path: filePath,
+                        mode: '100644',
+                        type: 'blob',
+                        sha: blob.sha
+                    });
+                }
             }
             // Add/update the changelog
             const changelogPath = path__namespace.join(change.path, 'CHANGELOG.md');
