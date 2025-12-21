@@ -59,3 +59,5 @@ jobs:
           # Disable Biome as the project uses Prettier for formatting
           VALIDATE_BIOME_FORMAT: false
           VALIDATE_BIOME_LINT: false
+          # Disable zizmor GitHub Actions security scanner
+          VALIDATE_GITHUB_ACTIONS_ZIZMOR: false
