@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       # - name: Setup pnpm
       #   id: setup-pnpm
@@ -42,5 +44,7 @@ jobs:
 
       - name: Print Versions
         id: print-versions
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
         run: |
-          echo "version: ${{ steps.release.outputs.version }}"
+          echo "version: $VERSION"
