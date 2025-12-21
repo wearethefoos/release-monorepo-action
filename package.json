@@ -36,8 +36,8 @@
     "@actions/core": "^1.11.1",
     "@actions/github": "^6.0.1",
     "@iarna/toml": "^3.0.0",
-    "@octokit/rest": "^22.0.0",
-    "semver": "^7.7.2"
+    "@octokit/rest": "^22.0.1",
+    "semver": "^7.7.3"
   },
   "devDependencies": {
     "@commitlint/config-conventional": "^20.2.0",
@@ -48,7 +48,7 @@
     "@rollup/plugin-node-resolve": "^16.0.3",
     "@rollup/plugin-typescript": "^12.3.0",
     "@types/node": "^20.19.27",
-    "@types/semver": "^7.7.0",
+    "@types/semver": "^7.7.1",
     "@typescript-eslint/eslint-plugin": "^8.50.0",
     "@typescript-eslint/parser": "^8.50.0",
     "@vercel/ncc": "^0.38.4",
