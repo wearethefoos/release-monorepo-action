@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   test-typescript:
@@ -21,10 +20,12 @@ jobs:
       - name: Checkout
         id: checkout
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         id: setup-pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@c5ba7f7862a0f64c1b1a05fbac13e0b8e86ba08c # v4
         with:
           version: 10
 
@@ -59,6 +60,8 @@ jobs:
       - name: Checkout
         id: checkout
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Test Prerelease
         id: prerelease
@@ -77,6 +80,9 @@ jobs:
 
       - name: Print Output
         id: output
+        env:
+          PRERELEASES: ${{ steps.prerelease.outputs.versions }}
+          VERSIONS: ${{ steps.release.outputs.versions }}
         run: |
-          echo "Prereleases: ${{ steps.prerelease.outputs.versions }}"
-          echo "Versions: ${{ steps.release.outputs.versions }}"
+          echo "Prereleases: $PRERELEASES"
+          echo "Versions: $VERSIONS"

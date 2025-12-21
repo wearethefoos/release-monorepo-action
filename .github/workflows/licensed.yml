@@ -25,13 +25,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # zizmor: ignore[artipacked] - needs credentials to push license updates
       - name: Checkout
         id: checkout
         uses: actions/checkout@v6
 
       - name: Setup pnpm
         id: setup-pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@c5ba7f7862a0f64c1b1a05fbac13e0b8e86ba08c # v4
         with:
           version: 10
 
@@ -48,7 +49,7 @@ jobs:
 
       - name: Setup Ruby
         id: setup-ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@d354de180d0c9e813cfddfcbdc079945d4be589b # v1
         with:
           ruby-version: ruby
 

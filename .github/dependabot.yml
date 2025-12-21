@@ -4,6 +4,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+      time: '09:00'
+      timezone: Etc/UTC
     groups:
       actions-minor:
         update-types:
@@ -14,6 +16,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+      time: '09:00'
+      timezone: Etc/UTC
     ignore:
       - dependency-name: '@types/node'
         update-types:
