@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.2.0](https://github.com/wearethefoos/release-monorepo-action/compare/v1.1.13...v1.2.0) (2026-01-12)
+
+### 🚀 Features
+
+- add support for pyproject.toml
+
 ## [1.1.13](https://github.com/wearethefoos/release-monorepo-action/compare/v1.1.12...v1.1.13) (2025-10-14)
 
 ### 🐛 Fixes
