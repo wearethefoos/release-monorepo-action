@@ -1086,6 +1086,7 @@ export class GitHubService {
   ): Promise<void> {
     const packageJsonPath = path.join(packagePath, 'package.json')
     const cargoTomlPath = path.join(packagePath, 'Cargo.toml')
+    const pyprojectTomlPath = path.join(packagePath, 'pyproject.toml')
     const versionTxtPath = path.join(packagePath, 'version.txt')
     const indentation = core.getInput('indentation') ?? '2'
     const indent =
@@ -1104,12 +1105,21 @@ export class GitHubService {
           newVersion
         fs.writeFileSync(cargoTomlPath, toml.stringify(cargoToml))
       }
+    } else if (fs.existsSync(pyprojectTomlPath)) {
+      const pyprojectToml = toml.parse(
+        fs.readFileSync(pyprojectTomlPath, 'utf-8')
+      )
+      if (pyprojectToml.project) {
+        ;(pyprojectToml.project as unknown as { version: string }).version =
+          newVersion
+        fs.writeFileSync(pyprojectTomlPath, toml.stringify(pyprojectToml))
+      }
     } else if (fs.existsSync(versionTxtPath)) {
       // For version.txt, we just write the version number directly
       fs.writeFileSync(versionTxtPath, newVersion + '\n')
     } else {
       throw new Error(
-        `No package.json, Cargo.toml, or version.txt found in ${packagePath}`
+        `No package.json, Cargo.toml, pyproject.toml, or version.txt found in ${packagePath}`
       )
     }
   }

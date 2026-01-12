@@ -1451,6 +1451,28 @@ describe('GitHubService', () => {
       )
     })
 
+    it('should update pyproject.toml version', async () => {
+      const packagePath = 'packages/core'
+      const newVersion = '1.0.0'
+      const pyprojectTomlPath = path.join(packagePath, 'pyproject.toml')
+      const pyprojectToml =
+        '[project]\nname = "core"\nversion = "0.1.0"\n\n[build-system]\nrequires = ["setuptools"]\n'
+
+      vi.mocked(fs.existsSync).mockImplementation(
+        (path) => path === pyprojectTomlPath
+      )
+      vi.mocked(fs.readFileSync).mockReturnValue(pyprojectToml)
+      vi.mocked(fs.writeFileSync).mockImplementation(() => {})
+
+      await githubService.updatePackageVersion(packagePath, newVersion)
+
+      expect(fs.readFileSync).toHaveBeenCalledWith(pyprojectTomlPath, 'utf-8')
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
+        pyprojectTomlPath,
+        expect.stringContaining(`version = "${newVersion}"`)
+      )
+    })
+
     it('should update version.txt version', async () => {
       const packagePath = 'packages/core'
       const newVersion = '1.0.0'
@@ -1478,7 +1500,7 @@ describe('GitHubService', () => {
       await expect(
         githubService.updatePackageVersion(packagePath, newVersion)
       ).rejects.toThrow(
-        `No package.json, Cargo.toml, or version.txt found in ${packagePath}`
+        `No package.json, Cargo.toml, pyproject.toml, or version.txt found in ${packagePath}`
       )
     })
   })

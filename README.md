@@ -13,6 +13,19 @@ accordingly.
 - Handles multiple packages in a monorepo setup
 - Tag pull requests to create prereleases
 
+## Supported Package Formats
+
+The action automatically detects and updates version information in the
+following file types:
+
+- **package.json** - For Node.js/JavaScript projects
+- **Cargo.toml** - For Rust projects
+- **pyproject.toml** - For Python projects (updates the `project.version` field)
+- **version.txt** - For projects using a simple text file for versioning
+
+The action will automatically detect which file type exists in each package
+directory and update it accordingly.
+
 ## Inputs
 
 | Input                | Description                                                                                     | Required | Default                  |

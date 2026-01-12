@@ -41199,6 +41199,7 @@ class GitHubService {
     async updatePackageVersion(packagePath, newVersion) {
         const packageJsonPath = path__namespace.join(packagePath, 'package.json');
         const cargoTomlPath = path__namespace.join(packagePath, 'Cargo.toml');
+        const pyprojectTomlPath = path__namespace.join(packagePath, 'pyproject.toml');
         const versionTxtPath = path__namespace.join(packagePath, 'version.txt');
         const indentation = coreExports.getInput('indentation') ?? '2';
         const indent = indentation === 'tab' ? '\t' : ' '.repeat(parseInt(indentation));
@@ -41216,12 +41217,20 @@ class GitHubService {
                 fs__namespace.writeFileSync(cargoTomlPath, tomlExports.stringify(cargoToml));
             }
         }
+        else if (fs__namespace.existsSync(pyprojectTomlPath)) {
+            const pyprojectToml = tomlExports.parse(fs__namespace.readFileSync(pyprojectTomlPath, 'utf-8'));
+            if (pyprojectToml.project) {
+                pyprojectToml.project.version =
+                    newVersion;
+                fs__namespace.writeFileSync(pyprojectTomlPath, tomlExports.stringify(pyprojectToml));
+            }
+        }
         else if (fs__namespace.existsSync(versionTxtPath)) {
             // For version.txt, we just write the version number directly
             fs__namespace.writeFileSync(versionTxtPath, newVersion + '\n');
         }
         else {
-            throw new Error(`No package.json, Cargo.toml, or version.txt found in ${packagePath}`);
+            throw new Error(`No package.json, Cargo.toml, pyproject.toml, or version.txt found in ${packagePath}`);
         }
     }
     async getPullRequestFromCommit(sha) {
