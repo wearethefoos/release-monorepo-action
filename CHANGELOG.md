@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.0.0](https://github.com/wearethefoos/release-monorepo-action/compare/v1.2.0...v2.0.0) (2026-04-16)
+
+### 🚀 Features
+
+- **BREAKING CHANGE:** migrate node runtime to 24 (#100)
+
 ## [1.2.0](https://github.com/wearethefoos/release-monorepo-action/compare/v1.1.13...v1.2.0) (2026-01-12)
 
 ### 🚀 Features
