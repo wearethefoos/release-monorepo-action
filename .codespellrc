@@ -1,0 +1,5 @@
+[codespell]
+# datea/dateb: variable names used in sort comparators in src/github.ts
+ignore-words-list = datea,dateb
+# Skip files that contain base64/hex hashes with false positives
+skip = pnpm-lock.yaml,*.lock,dist,coverage,node_modules,.git
