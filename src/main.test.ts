@@ -46,7 +46,9 @@ const githubServiceMock = {
   getPullRequestNumberFromContext: vi.fn()
 }
 vi.mock('./github.js', () => ({
-  GitHubService: vi.fn(() => githubServiceMock)
+  GitHubService: vi.fn(function () {
+    return githubServiceMock
+  })
 }))
 
 let run: () => Promise<void>

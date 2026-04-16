@@ -52,5 +52,5 @@ outputs:
     description: 'Whether the release or releases were prereleases'
 
 runs:
-  using: node20
+  using: node24
   main: dist/index.js

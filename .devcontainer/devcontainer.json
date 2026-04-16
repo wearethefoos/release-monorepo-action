@@ -1,7 +1,7 @@
 {
   "name": "GitHub Actions (TypeScript)",
-  "image": "mcr.microsoft.com/devcontainers/typescript-node:20",
-  "postCreateCommand": "npm install",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:24",
+  "postCreateCommand": "corepack enable && pnpm install --frozen-lockfile",
   "customizations": {
     "codespaces": {
       "openFiles": ["README.md"]
