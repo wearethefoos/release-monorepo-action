@@ -55,7 +55,9 @@ const mockOctokit = {
 }
 
 vi.mock('@octokit/rest', () => ({
-  Octokit: vi.fn(() => mockOctokit)
+  Octokit: vi.fn(function () {
+    return mockOctokit
+  })
 }))
 
 // Mock GitHub context
@@ -1086,9 +1088,9 @@ describe('GitHubService', () => {
 
       // Mock Date.now() to return a fixed timestamp
       const mockDate = new Date('2024-01-01T12:00:00.000Z')
-      vi.spyOn(global, 'Date').mockImplementation(
-        () => mockDate as unknown as string
-      )
+      vi.spyOn(global, 'Date').mockImplementation(function () {
+        return mockDate as unknown as string
+      })
 
       await githubService.createReleasePullRequest(changes, 'release-me')
 
@@ -1187,9 +1189,9 @@ describe('GitHubService', () => {
 
       // Mock Date.now() to return a fixed timestamp
       const mockDate = new Date('2024-01-01T12:00:00.000Z')
-      vi.spyOn(global, 'Date').mockImplementation(
-        () => mockDate as unknown as string
-      )
+      vi.spyOn(global, 'Date').mockImplementation(function () {
+        return mockDate as unknown as string
+      })
 
       await githubService.createReleasePullRequest(changes, 'release-me')
 
