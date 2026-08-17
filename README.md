@@ -38,8 +38,8 @@ directory and update it accordingly.
 | `release-target`          | The target environment to release to (e.g. main, canary, aws). Cannot be "latest"                                                                                                                                                                                                                 | No       | `main`                                          |
 | `overwrite-existing-tags` | Whether to force-move a release tag that already exists to the current commit instead of failing the run. **Deprecated:** defaults to `true` for now (matching pre-2.x behavior); this default will change to `false` in a future release, so set it explicitly to avoid a later behavior change. | No       | `true`                                          |
 | `indentation`             | The indentation to use for JSON files, can be "tab" or a number of spaces. Default is 2 spaces.                                                                                                                                                                                                   | No       | `'2'`                                           |
-| `git-user-name`           | The git user name to use for release commits created by this action                                                                                                                                                                                                                               | No       | `github-actions[bot]`                           |
-| `git-user-email`          | The git user email to use for release commits created by this action                                                                                                                                                                                                                              | No       | `41898282+github-actions[bot]@users.noreply...` |
+| `git-user-name`           | The Git username to use for release commits created by this action                                                                                                                                                                                                                                | No       | `github-actions[bot]`                           |
+| `git-user-email`          | The Git user email to use for release commits created by this action                                                                                                                                                                                                                              | No       | `41898282+github-actions[bot]@users.noreply...` |
 
 ## Outputs
 
@@ -137,7 +137,7 @@ permissions:
 ## Requirements
 
 - **Git history**: The workflow must use `fetch-depth: 0` in
-  `actions/checkout@v4` to fetch the full git history, which is necessary for
+  `actions/checkout@v4` to fetch the full Git history, which is necessary for
   analyzing commits and managing tags locally.
 - **gh CLI**: The GitHub CLI is pre-installed and pre-authenticated on all
   GitHub-hosted runners via the `GH_TOKEN` environment variable, which is
