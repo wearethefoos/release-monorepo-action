@@ -37,7 +37,6 @@ describe('getActionContext', () => {
       process.env.GITHUB_SHA = 'abc123'
       process.env.GITHUB_REF = 'refs/pull/42/merge'
       process.env.GITHUB_EVENT_PATH = '/tmp/event.json'
-
       ;(fs.existsSync as Mock).mockReturnValue(true)
       ;(fs.readFileSync as Mock).mockReturnValue(JSON.stringify(eventPayload))
 
@@ -66,7 +65,6 @@ describe('getActionContext', () => {
       process.env.GITHUB_SHA = 'def456'
       process.env.GITHUB_REF = 'refs/pull/99/merge'
       process.env.GITHUB_EVENT_PATH = '/tmp/event.json'
-
       ;(fs.existsSync as Mock).mockReturnValue(true)
       ;(fs.readFileSync as Mock).mockReturnValue(JSON.stringify(eventPayload))
 
@@ -87,7 +85,6 @@ describe('getActionContext', () => {
       process.env.GITHUB_SHA = 'xyz789'
       process.env.GITHUB_REF = 'refs/heads/main'
       process.env.GITHUB_EVENT_PATH = '/tmp/event.json'
-
       ;(fs.existsSync as Mock).mockReturnValue(true)
       ;(fs.readFileSync as Mock).mockReturnValue(JSON.stringify(eventPayload))
 
@@ -109,7 +106,6 @@ describe('getActionContext', () => {
       process.env.GITHUB_SHA = 'zzz999'
       process.env.GITHUB_REF = 'refs/heads/release/v1.0'
       process.env.GITHUB_EVENT_PATH = '/tmp/event.json'
-
       ;(fs.existsSync as Mock).mockReturnValue(true)
       ;(fs.readFileSync as Mock).mockReturnValue(JSON.stringify(eventPayload))
 
@@ -129,7 +125,6 @@ describe('getActionContext', () => {
       process.env.GITHUB_SHA = 'sha123'
       process.env.GITHUB_REF = 'refs/heads/main'
       process.env.GITHUB_EVENT_PATH = '/tmp/event.json'
-
       ;(fs.existsSync as Mock).mockReturnValue(true)
       ;(fs.readFileSync as Mock).mockReturnValue(JSON.stringify(eventPayload))
 
@@ -146,7 +141,6 @@ describe('getActionContext', () => {
       process.env.GITHUB_SHA = 'sha123'
       process.env.GITHUB_REF = 'refs/heads/main'
       process.env.GITHUB_EVENT_PATH = '/tmp/event.json'
-
       ;(fs.existsSync as Mock).mockReturnValue(true)
       ;(fs.readFileSync as Mock).mockReturnValue(JSON.stringify(eventPayload))
 
@@ -163,7 +157,6 @@ describe('getActionContext', () => {
       process.env.GITHUB_SHA = 'sha123'
       process.env.GITHUB_REF = 'refs/heads/main'
       process.env.GITHUB_EVENT_PATH = '/tmp/event.json'
-
       ;(fs.existsSync as Mock).mockReturnValue(true)
       ;(fs.readFileSync as Mock).mockReturnValue(JSON.stringify(eventPayload))
 
@@ -194,7 +187,6 @@ describe('getActionContext', () => {
       process.env.GITHUB_SHA = 'sha123'
       process.env.GITHUB_REF = 'refs/heads/main'
       process.env.GITHUB_EVENT_PATH = '/nonexistent/event.json'
-
       ;(fs.existsSync as Mock).mockReturnValue(false)
 
       const context = getActionContext()
@@ -209,7 +201,6 @@ describe('getActionContext', () => {
       process.env.GITHUB_SHA = 'sha123'
       process.env.GITHUB_REF = 'refs/heads/main'
       process.env.GITHUB_EVENT_PATH = '/tmp/event.json'
-
       ;(fs.existsSync as Mock).mockReturnValue(true)
       ;(fs.readFileSync as Mock).mockImplementation(() => {
         throw new Error('Permission denied')
@@ -226,7 +217,6 @@ describe('getActionContext', () => {
       process.env.GITHUB_SHA = 'sha123'
       process.env.GITHUB_REF = 'refs/heads/main'
       process.env.GITHUB_EVENT_PATH = '/tmp/event.json'
-
       ;(fs.existsSync as Mock).mockReturnValue(true)
       ;(fs.readFileSync as Mock).mockReturnValue('{ invalid json }')
 
@@ -245,7 +235,6 @@ describe('getActionContext', () => {
       delete process.env.GITHUB_SHA
       process.env.GITHUB_REF = 'refs/heads/main'
       process.env.GITHUB_EVENT_PATH = '/tmp/event.json'
-
       ;(fs.existsSync as Mock).mockReturnValue(true)
       ;(fs.readFileSync as Mock).mockReturnValue(JSON.stringify(eventPayload))
 
@@ -261,7 +250,6 @@ describe('getActionContext', () => {
       process.env.GITHUB_SHA = 'sha123'
       delete process.env.GITHUB_REF
       process.env.GITHUB_EVENT_PATH = '/tmp/event.json'
-
       ;(fs.existsSync as Mock).mockReturnValue(true)
       ;(fs.readFileSync as Mock).mockReturnValue(JSON.stringify(eventPayload))
 
@@ -297,7 +285,6 @@ describe('getActionContext', () => {
       process.env.GITHUB_SHA = 'sha123'
       process.env.GITHUB_REF = 'refs/heads/main'
       process.env.GITHUB_EVENT_PATH = '/tmp/event.json'
-
       ;(fs.existsSync as Mock).mockReturnValue(true)
       ;(fs.readFileSync as Mock).mockReturnValue(JSON.stringify(eventPayload))
 
@@ -313,7 +300,6 @@ describe('getActionContext', () => {
       process.env.GITHUB_SHA = 'sha123'
       process.env.GITHUB_REF = 'refs/heads/main'
       process.env.GITHUB_EVENT_PATH = '/tmp/event.json'
-
       ;(fs.existsSync as Mock).mockReturnValue(true)
       ;(fs.readFileSync as Mock).mockReturnValue(JSON.stringify(eventPayload))
 
@@ -340,7 +326,6 @@ describe('getActionContext', () => {
       process.env.GITHUB_SHA = 'sha123'
       process.env.GITHUB_REF = 'refs/pull/50/merge'
       process.env.GITHUB_EVENT_PATH = '/tmp/event.json'
-
       ;(fs.existsSync as Mock).mockReturnValue(true)
       ;(fs.readFileSync as Mock).mockReturnValue(JSON.stringify(eventPayload))
 
@@ -365,7 +350,6 @@ describe('getActionContext', () => {
       process.env.GITHUB_SHA = 'abc123def456'
       process.env.GITHUB_REF = 'refs/pull/1/merge'
       process.env.GITHUB_EVENT_PATH = '/tmp/event.json'
-
       ;(fs.existsSync as Mock).mockReturnValue(true)
       ;(fs.readFileSync as Mock).mockReturnValue(JSON.stringify(eventPayload))
 
@@ -385,7 +369,6 @@ describe('getActionContext', () => {
       process.env.GITHUB_SHA = 'sha123'
       process.env.GITHUB_REF = 'refs/heads/main'
       process.env.GITHUB_EVENT_PATH = '/tmp/event.json'
-
       ;(fs.existsSync as Mock).mockReturnValue(true)
       ;(fs.readFileSync as Mock).mockReturnValue(JSON.stringify(eventPayload))
 
@@ -405,7 +388,6 @@ describe('getActionContext', () => {
       process.env.GITHUB_SHA = 'sha123'
       process.env.GITHUB_REF = 'refs/pull/1/merge'
       process.env.GITHUB_EVENT_PATH = '/tmp/event.json'
-
       ;(fs.existsSync as Mock).mockReturnValue(true)
       ;(fs.readFileSync as Mock).mockReturnValue(JSON.stringify(eventPayload))
 
@@ -430,7 +412,6 @@ describe('getActionContext', () => {
       process.env.GITHUB_SHA = 'sha123'
       process.env.GITHUB_REF = 'refs/pull/0/merge'
       process.env.GITHUB_EVENT_PATH = '/tmp/event.json'
-
       ;(fs.existsSync as Mock).mockReturnValue(true)
       ;(fs.readFileSync as Mock).mockReturnValue(JSON.stringify(eventPayload))
 
