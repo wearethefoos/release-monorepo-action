@@ -274,18 +274,34 @@ export function tagExists(tagName: string): boolean {
  * the old Octokit `createRef({ force: true })` upsert) -- used only when
  * the `overwrite-existing-tags` input opts into clobbering a pre-existing
  * tag; the default path never passes `force`.
+ *
+ * An annotated tag is itself a git object with its own "tagger" field
+ * (like a commit's author/committer), so it fails with "empty ident
+ * name"/"Committer identity unknown" on a runner with no git identity
+ * configured -- exactly like `commitFilesToBranch`'s commit step would
+ * without its own `-c user.name`/`-c user.email`. `userName`/`userEmail`
+ * (the `git-user-name`/`git-user-email` action inputs) are applied the same
+ * way here, scoped to just this command.
  */
 export function createAnnotatedTag(
   tagName: string,
   message: string,
   sha: string,
+  userName: string,
+  userEmail: string,
   force: boolean = false
 ): void {
   // `-m` before `--` so the untrusted tag name and sha can never be read as
   // options; the multiline message is a single argv element.
+  const identityArgs = [
+    '-c',
+    `user.name=${userName}`,
+    '-c',
+    `user.email=${userEmail}`
+  ]
   const args = force
-    ? ['tag', '-f', '-a', '-m', message, '--', tagName, sha]
-    : ['tag', '-a', '-m', message, '--', tagName, sha]
+    ? [...identityArgs, 'tag', '-f', '-a', '-m', message, '--', tagName, sha]
+    : [...identityArgs, 'tag', '-a', '-m', message, '--', tagName, sha]
   execCommand('git', args)
 }
 

