@@ -1,5 +1,4 @@
 import * as core from '@actions/core'
-import { context } from '@actions/github'
 import { GitHubService } from './github'
 import { PackageChanges } from './types'
 import {
@@ -22,6 +21,22 @@ export async function run(): Promise<void> {
     const createPreReleases = core.getInput('create-prereleases') === 'true'
     const prereleaseLabel = core.getInput('prerelease-label')
     const releaseTarget = core.getInput('release-target')
+    // Defaults to true (matches pre-2.x force-move behavior) so this isn't a
+    // breaking change; core.getInput() returns '' rather than the action.yml
+    // default outside a real Actions runtime (e.g. local-action, some test
+    // harnesses), so only an explicit "false" opts out.
+    const overwriteExistingTags =
+      core.getInput('overwrite-existing-tags') !== 'false'
+    if (overwriteExistingTags) {
+      core.warning(
+        'The "overwrite-existing-tags" input currently defaults to "true" ' +
+          '(colliding release tags are force-moved to the new commit). This ' +
+          'default will change to "false" in a future release, after which a ' +
+          'tag collision will fail the run unless overwrite-existing-tags is ' +
+          'explicitly set to "true". Set it explicitly now to avoid a behavior ' +
+          'change later.'
+      )
+    }
 
     // default outputs
     core.setOutput('releases-created', false)
@@ -55,8 +70,11 @@ export async function run(): Promise<void> {
 
     if (isDeletedReleaseBranch) {
       if (labels.includes('release-me')) {
-        core.debug('Adding released label to PR')
-        await github.addLabel('released', context.issue.number)
+        const prNumber = github.getPullRequestNumberFromContext()
+        if (prNumber) {
+          core.debug('Adding released label to PR')
+          await github.addLabel('released', prNumber)
+        }
       }
 
       core.info(
@@ -272,7 +290,7 @@ export async function run(): Promise<void> {
         core.info(`Failed to create PR comment: ${error}`)
       }
       core.debug('Creating release for prerelease')
-      await github.createRelease(changes, true)
+      await github.createRelease(changes, true, overwriteExistingTags)
       core.setOutput('releases-created', true)
       core.debug('Returning early: prerelease')
       return
@@ -286,7 +304,7 @@ export async function run(): Promise<void> {
       core.debug(`PR number from context: ${prNumber}`)
 
       if (!prNumber) {
-        prNumber = await github.getPullRequestFromCommit(context.sha)
+        prNumber = await github.getPullRequestFromCommit(github.getContextSha())
       }
 
       if (!prNumber) {
@@ -297,7 +315,7 @@ export async function run(): Promise<void> {
 
       if (!isVersionBumpPR) {
         core.info(`Creating releases...`)
-        await github.createRelease(changes)
+        await github.createRelease(changes, false, overwriteExistingTags)
       }
 
       core.setOutput('releases-created', true)
@@ -329,7 +347,7 @@ export async function run(): Promise<void> {
     ) {
       core.info('Creating release for main branch')
       core.debug('Assuming this is a squashed merge of a release PR')
-      await github.createRelease(changes)
+      await github.createRelease(changes, false, overwriteExistingTags)
       core.setOutput('releases-created', true)
       core.debug('Returning after createRelease for main branch')
       return

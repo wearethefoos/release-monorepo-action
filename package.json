@@ -34,9 +34,6 @@
   "license": "MIT",
   "dependencies": {
     "@actions/core": "^3.0.1",
-    "@actions/github": "^9.1.1",
-    "@iarna/toml": "^3.0.0",
-    "@octokit/rest": "^22.0.1",
     "semver": "^7.7.4"
   },
   "devDependencies": {
@@ -64,5 +61,10 @@
     "typescript": "^6.0.2",
     "vite": "^8.1.4",
     "vitest": "^4.1.10"
+  },
+  "pnpm": {
+    "overrides": {
+      "undici": "^6.28.0"
+    }
   }
 }

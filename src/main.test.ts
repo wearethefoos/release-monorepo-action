@@ -43,7 +43,10 @@ const githubServiceMock = {
   createComment: vi.fn(),
   onMainBranch: vi.fn(),
   isPullRequestMerged: vi.fn(),
-  getPullRequestNumberFromContext: vi.fn()
+  getPullRequestNumberFromContext: vi.fn(),
+  getReleaseTargetToLatestChanges: vi.fn(),
+  createVersionBumpPullRequest: vi.fn(),
+  getContextSha: vi.fn()
 }
 vi.mock('./github.js', () => ({
   GitHubService: vi.fn(function () {
@@ -94,6 +97,9 @@ describe('main.ts', () => {
     // Mock getManifestFromMain
     githubServiceMock.getManifestFromMain.mockResolvedValue(mockManifest)
     githubServiceMock.isDeletedReleaseBranch.mockResolvedValue(false)
+    githubServiceMock.getReleaseTargetToLatestChanges.mockReturnValue([])
+    githubServiceMock.getPullRequestNumberFromContext.mockReturnValue(null)
+    githubServiceMock.getContextSha.mockReturnValue('abc123sha')
   })
 
   it('should exit early if no changes requiring version updates are found', async () => {
@@ -163,6 +169,31 @@ describe('main.ts', () => {
     githubServiceMock.createReleasePullRequest.mockResolvedValue(undefined)
     await run()
     expect(core.setFailed).toHaveBeenCalledWith('API Error')
+  })
+
+  it('should add released label on a deleted release branch when a PR number is available', async () => {
+    githubServiceMock.getPullRequestLabels.mockResolvedValue([
+      'release-me',
+      'release-target:main'
+    ])
+    githubServiceMock.isDeletedReleaseBranch.mockResolvedValue(true)
+    githubServiceMock.getPullRequestNumberFromContext.mockReturnValue(789)
+    await run()
+    expect(githubServiceMock.addLabel).toHaveBeenCalledWith('released', 789)
+  })
+
+  it('should skip adding released label on a deleted release branch when no PR number is available', async () => {
+    githubServiceMock.getPullRequestLabels.mockResolvedValue([
+      'release-me',
+      'release-target:main'
+    ])
+    githubServiceMock.isDeletedReleaseBranch.mockResolvedValue(true)
+    githubServiceMock.getPullRequestNumberFromContext.mockReturnValue(null)
+    await run()
+    expect(githubServiceMock.addLabel).not.toHaveBeenCalled()
+    expect(core.info).toHaveBeenCalledWith(
+      'Seems we are on an old release branch that does not exist anymore, nothing else to do here'
+    )
   })
 
   it('should skip if PR is labeled with released', async () => {
@@ -374,6 +405,180 @@ describe('main.ts', () => {
     )
   })
 
+  it('threads the overwrite-existing-tags input through to createRelease', async () => {
+    const mockCommits = [
+      {
+        commit: {
+          message: 'chore: release core@1.1.0'
+        },
+        sha: 'abc123'
+      }
+    ]
+    githubServiceMock.getPullRequestLabels.mockResolvedValue([])
+    githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue(
+      mockCommits
+    )
+    githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue([
+      'feat(core): add new feature'
+    ])
+    githubServiceMock.createRelease.mockResolvedValue(undefined)
+    githubServiceMock.getPullRequestFromCommit.mockResolvedValue(null)
+    githubServiceMock.wasManifestUpdatedInLastCommit.mockResolvedValue(true)
+    githubServiceMock.getLastReleaseVersion.mockResolvedValue('1.0.0')
+    githubServiceMock.getChangelogForPackage.mockResolvedValue(
+      '## 1.1.0\n\n- New feature'
+    )
+    githubServiceMock.addLabel.mockResolvedValue(undefined)
+    ;(core.getInput as Mock).mockImplementation((name: string) => {
+      if (name === 'release-target') return 'canary'
+      if (name === 'overwrite-existing-tags') return 'true'
+      return ''
+    })
+
+    await run()
+
+    expect(githubServiceMock.createRelease).toHaveBeenCalledWith(
+      expect.any(Array),
+      false,
+      true
+    )
+  })
+
+  // Regression coverage for the tag-collision behavior decision: a
+  // colliding tag is a hard failure (createRelease throws), and main's
+  // top-level try/catch must turn that into core.setFailed like any other
+  // real error, not a swallowed/partial success.
+  it('fails the run via core.setFailed when createRelease throws on a tag collision', async () => {
+    const mockCommits = [
+      {
+        commit: {
+          message: 'chore: release core@1.1.0'
+        },
+        sha: 'abc123'
+      }
+    ]
+    githubServiceMock.getPullRequestLabels.mockResolvedValue([])
+    githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue(
+      mockCommits
+    )
+    githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue([
+      'feat(core): add new feature'
+    ])
+    githubServiceMock.createRelease.mockRejectedValue(
+      new Error(
+        'Tag core-v1.1.0 already exists. Refusing to overwrite it. Set the "overwrite-existing-tags" input to "true" to allow force-moving existing tags to the current commit.'
+      )
+    )
+    githubServiceMock.getPullRequestFromCommit.mockResolvedValue(null)
+    githubServiceMock.wasManifestUpdatedInLastCommit.mockResolvedValue(true)
+    githubServiceMock.getLastReleaseVersion.mockResolvedValue('1.0.0')
+    githubServiceMock.getChangelogForPackage.mockResolvedValue(
+      '## 1.1.0\n\n- New feature'
+    )
+    ;(core.getInput as Mock).mockImplementation((name: string) => {
+      if (name === 'release-target') return 'canary'
+      return ''
+    })
+
+    await run()
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining('Tag core-v1.1.0 already exists')
+    )
+    expect(core.setOutput).not.toHaveBeenCalledWith('releases-created', true)
+  })
+
+  // Deprecated default: overwrite-existing-tags currently defaults to true
+  // (matching pre-2.x force-move behavior) so this isn't a breaking change.
+  // core.getInput() returns '' rather than action.yml's default outside a
+  // real Actions runtime, so "unset" here must resolve to true too.
+  it('defaults overwrite-existing-tags to true when unset, and warns about the deprecated default', async () => {
+    const mockCommits = [
+      {
+        commit: {
+          message: 'chore: release core@1.1.0'
+        },
+        sha: 'abc123'
+      }
+    ]
+    githubServiceMock.getPullRequestLabels.mockResolvedValue([])
+    githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue(
+      mockCommits
+    )
+    githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue([
+      'feat(core): add new feature'
+    ])
+    githubServiceMock.createRelease.mockResolvedValue(undefined)
+    githubServiceMock.getPullRequestFromCommit.mockResolvedValue(null)
+    githubServiceMock.wasManifestUpdatedInLastCommit.mockResolvedValue(true)
+    githubServiceMock.getLastReleaseVersion.mockResolvedValue('1.0.0')
+    githubServiceMock.getChangelogForPackage.mockResolvedValue(
+      '## 1.1.0\n\n- New feature'
+    )
+    githubServiceMock.addLabel.mockResolvedValue(undefined)
+    ;(core.getInput as Mock).mockImplementation((name: string) => {
+      if (name === 'release-target') return 'canary'
+      return ''
+    })
+
+    await run()
+
+    expect(githubServiceMock.createRelease).toHaveBeenCalledWith(
+      expect.any(Array),
+      false,
+      true
+    )
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '"overwrite-existing-tags" input currently defaults to "true"'
+      )
+    )
+  })
+
+  it('honors an explicit overwrite-existing-tags: "false" without warning', async () => {
+    const mockCommits = [
+      {
+        commit: {
+          message: 'chore: release core@1.1.0'
+        },
+        sha: 'abc123'
+      }
+    ]
+    githubServiceMock.getPullRequestLabels.mockResolvedValue([])
+    githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue(
+      mockCommits
+    )
+    githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue([
+      'feat(core): add new feature'
+    ])
+    githubServiceMock.createRelease.mockResolvedValue(undefined)
+    githubServiceMock.getPullRequestFromCommit.mockResolvedValue(null)
+    githubServiceMock.wasManifestUpdatedInLastCommit.mockResolvedValue(true)
+    githubServiceMock.getLastReleaseVersion.mockResolvedValue('1.0.0')
+    githubServiceMock.getChangelogForPackage.mockResolvedValue(
+      '## 1.1.0\n\n- New feature'
+    )
+    githubServiceMock.addLabel.mockResolvedValue(undefined)
+    ;(core.getInput as Mock).mockImplementation((name: string) => {
+      if (name === 'release-target') return 'canary'
+      if (name === 'overwrite-existing-tags') return 'false'
+      return ''
+    })
+
+    await run()
+
+    expect(githubServiceMock.createRelease).toHaveBeenCalledWith(
+      expect.any(Array),
+      false,
+      false
+    )
+    expect(core.warning).not.toHaveBeenCalledWith(
+      expect.stringContaining(
+        '"overwrite-existing-tags" input currently defaults to "true"'
+      )
+    )
+  })
+
   it('should find release PR by versions when commit lookup fails', async () => {
     const mockCommits = [
       {
@@ -411,7 +616,7 @@ describe('main.ts', () => {
     })
     await run()
     expect(githubServiceMock.createRelease).toHaveBeenCalled()
-    expect(githubServiceMock.addLabel).toHaveBeenCalledWith('released', 123)
+    expect(githubServiceMock.addLabel).toHaveBeenCalledWith('released', 456)
     expect(core.setOutput).toHaveBeenCalledWith('prerelease', false)
     expect(core.setOutput).toHaveBeenCalledWith(
       'versions',
@@ -454,6 +659,37 @@ describe('main.ts', () => {
     await run()
     expect(githubServiceMock.createReleasePullRequest).not.toHaveBeenCalled()
     expect(core.setOutput).toHaveBeenCalledWith('prerelease', true)
+  })
+
+  it('should create a version bump PR when release target lags behind latest', async () => {
+    githubServiceMock.getPullRequestLabels.mockResolvedValue([])
+    githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue([])
+    const changesToLatest = [
+      {
+        name: 'core',
+        path: 'packages/core',
+        currentVersion: '0.9.0',
+        newVersion: '1.0.0',
+        commits: [],
+        changelog: 'Bumped canary to 1.0.0',
+        releaseTarget: 'canary'
+      }
+    ]
+    githubServiceMock.getReleaseTargetToLatestChanges.mockReturnValue(
+      changesToLatest
+    )
+    githubServiceMock.createVersionBumpPullRequest.mockResolvedValue(undefined)
+    ;(core.getInput as Mock).mockImplementation((name: string) => {
+      if (name === 'release-target') return 'canary'
+      return ''
+    })
+    await run()
+    expect(githubServiceMock.createVersionBumpPullRequest).toHaveBeenCalledWith(
+      changesToLatest,
+      'release-me'
+    )
+    expect(core.setOutput).toHaveBeenCalledWith('releases-created', true)
+    expect(core.setOutput).toHaveBeenCalledWith('version', '1.0.0')
   })
 
   it('should warn if release-target is "latest"', async () => {

@@ -26,16 +26,31 @@ following file types:
 The action will automatically detect which file type exists in each package
 directory and update it accordingly.
 
+Cargo.toml and pyproject.toml are updated with a targeted edit of just the
+`version` field's value, not a full parse/reformat, so comments, key order, and
+existing formatting are left exactly as they were - no separate formatting step
+is needed afterward. If a changed package has a Cargo.lock (either its own, for
+a standalone crate, or a shared one at the repository root, for a Cargo
+workspace), it's refreshed via `cargo update --workspace` as part of the same
+release commit, so it never goes stale relative to the bumped Cargo.toml
+version. This requires `cargo` to be available on the runner (and any private
+registry authentication your workspace needs to already be configured) whenever
+the repository contains Cargo.toml packages.
+
 ## Inputs
 
-| Input                | Description                                                                                     | Required | Default                  |
-| -------------------- | ----------------------------------------------------------------------------------------------- | -------- | ------------------------ |
-| `token`              | GitHub token for authentication                                                                 | Yes      | -                        |
-| `root-dir`           | Root directory for the release                                                                  | Yes      | `.`                      |
-| `manifest-file`      | Path to the manifest file containing package versions                                           | Yes      | `.release-manifest.json` |
-| `create-prereleases` | Whether to create prereleases from pull requests                                                | No       | `false`                  |
-| `prerelease-label`   | The PR label to use for prereleases                                                             | No       | `Prerelease`             |
-| `indentation`        | The indentation to use for JSON files, can be "tab" or a number of spaces. Default is 2 spaces. | No       | `'2'`                    |
+| Input                     | Description                                                                                                                                                                                                                                                                                       | Required | Default                                         |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------------------------------------------- |
+| `token`                   | GitHub token for authentication                                                                                                                                                                                                                                                                   | Yes      | -                                               |
+| `root-dir`                | Root directory for the release                                                                                                                                                                                                                                                                    | Yes      | `.`                                             |
+| `manifest-file`           | Path to the manifest file containing package versions                                                                                                                                                                                                                                             | Yes      | `.release-manifest.json`                        |
+| `create-prereleases`      | Whether to create prereleases from pull requests                                                                                                                                                                                                                                                  | No       | `false`                                         |
+| `prerelease-label`        | The PR label to use for prereleases                                                                                                                                                                                                                                                               | No       | `Prerelease`                                    |
+| `release-target`          | The target environment to release to (e.g. main, canary, aws). Cannot be "latest"                                                                                                                                                                                                                 | No       | `main`                                          |
+| `overwrite-existing-tags` | Whether to force-move a release tag that already exists to the current commit instead of failing the run. **Deprecated:** defaults to `true` for now (matching pre-2.x behavior); this default will change to `false` in a future release, so set it explicitly to avoid a later behavior change. | No       | `true`                                          |
+| `indentation`             | The indentation to use for JSON files, can be "tab" or a number of spaces. Default is 2 spaces.                                                                                                                                                                                                   | No       | `'2'`                                           |
+| `git-user-name`           | The Git username to use for release commits created by this action                                                                                                                                                                                                                                | No       | `github-actions[bot]`                           |
+| `git-user-email`          | The Git user email to use for release commits created by this action                                                                                                                                                                                                                              | No       | `41898282+github-actions[bot]@users.noreply...` |
 
 ## Outputs
 
@@ -83,7 +98,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -108,7 +123,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -119,6 +134,31 @@ jobs:
           # Add this label to a PR to create prereleases for it
           prerelease-label: 'Prerelease'
 ```
+
+## Workflow Permissions
+
+This action requires the following permissions in your workflow:
+
+```yaml
+permissions:
+  contents: write # For creating commits, tags, and pushing to main
+  pull-requests: write # For creating and updating release PRs, adding labels, and posting comments
+```
+
+## Requirements
+
+- **Git history**: The workflow must use `fetch-depth: 0` in
+  `actions/checkout@v6` to fetch the full Git history, which is necessary for
+  analyzing commits and managing tags locally.
+- **gh CLI**: The GitHub CLI is pre-installed and pre-authenticated on all
+  GitHub-hosted runners via the `GH_TOKEN` environment variable, which is
+  automatically set from the `token` input.
+- **cargo**: Only needed if the repository contains Cargo.toml packages - used
+  to refresh Cargo.lock after a version bump (see
+  [Supported Package Formats](#supported-package-formats)). Not pre-installed on
+  standard GitHub-hosted runners; add a Rust toolchain setup step (and any
+  private registry authentication your workspace needs) before this action if
+  you release Rust packages.
 
 ## How It Works
 

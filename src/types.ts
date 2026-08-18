@@ -41,6 +41,7 @@ export interface ReleaseContext {
   headRef: string
   owner: string
   repo: string
+  sha: string
 }
 
 export type VersionBump = 'major' | 'minor' | 'patch' | 'none'

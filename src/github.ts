@@ -1,6 +1,4 @@
-import { context } from '@actions/github'
 import * as core from '@actions/core'
-import { Octokit } from '@octokit/rest'
 import {
   ReleaseContext,
   PackageChanges,
@@ -9,9 +7,11 @@ import {
 } from './types.js'
 import * as fs from 'fs'
 import * as path from 'path'
-import * as toml from '@iarna/toml'
 import { determineVersionBump, parseConventionalCommit } from './version.js'
 import { basename } from 'path'
+import { getActionContext } from './context.js'
+import * as git from './git.js'
+import * as gh from './gh.js'
 
 interface CommitFile {
   filename: string
@@ -29,13 +29,83 @@ interface Commit {
   files?: CommitFile[]
 }
 
+/**
+ * Replaces the `version = "..."` field inside a TOML file's top-level
+ * `[tableName]` table (e.g. Cargo.toml's `[package]`, pyproject.toml's
+ * `[project]`) via a targeted string replacement, rather than a full
+ * parse-and-reserialize round trip. A round trip through a TOML
+ * stringifier reformats the whole file -- reordering keys, dropping
+ * comments, changing quote/whitespace style -- which was forcing consumers
+ * to run a separate formatter (e.g. `taplo fmt`) after every release PR
+ * just to undo it. This only ever touches the exact characters between the
+ * version field's quotes, so everything else in the file, including
+ * comments and dependency version specifiers elsewhere in the document, is
+ * untouched byte-for-byte.
+ *
+ * Returns null (leaving the file alone, matching the old
+ * `if (parsed.package)`-guarded behavior) when the file has no
+ * `[tableName]` table or no `version` field within it -- e.g. a Cargo
+ * workspace root that only has a `[workspace]` table.
+ */
+function replaceTomlVersion(
+  content: string,
+  tableName: string,
+  newVersion: string
+): string | null {
+  const headerRegex = new RegExp(
+    `^\\[${tableName}\\][ \\t]*(?:#.*)?[ \\t]*\\r?\\n`,
+    'm'
+  )
+  const headerMatch = headerRegex.exec(content)
+  if (!headerMatch) {
+    return null
+  }
+
+  // The section runs until the next top-level table header (`[...]`, not
+  // `[[...]]`... a `[[` line still starts with `[` so this also correctly
+  // stops there) or end of file.
+  const sectionStart = headerMatch.index + headerMatch[0].length
+  const rest = content.slice(sectionStart)
+  const nextHeaderMatch = /^\[[^\]]*\]/m.exec(rest)
+  const sectionEnd =
+    nextHeaderMatch === null
+      ? content.length
+      : sectionStart + nextHeaderMatch.index
+
+  const section = content.slice(sectionStart, sectionEnd)
+  const versionRegex = /^version[ \t]*=[ \t]*(["'])([^"']*)\1/dm
+  const versionMatch = versionRegex.exec(section)
+  if (!versionMatch?.indices) {
+    return null
+  }
+
+  const [valueStart, valueEnd] = versionMatch.indices[2]
+  const absoluteStart = sectionStart + valueStart
+  const absoluteEnd = sectionStart + valueEnd
+
+  return (
+    content.slice(0, absoluteStart) + newVersion + content.slice(absoluteEnd)
+  )
+}
+
+/**
+ * Thin facade over local git operations (src/git.ts) and the `gh` CLI
+ * (src/gh.ts). Public method names and signatures are unchanged from the
+ * previous Octokit-backed implementation so callers (src/main.ts) and their
+ * tests survive untouched; internals are synchronous git/gh calls wrapped in
+ * `async` methods for API compatibility.
+ */
 export class GitHubService {
-  private octokit: Octokit
   private releaseContext: ReleaseContext
 
   constructor(token: string) {
-    this.octokit = new Octokit({ auth: token })
-    this.releaseContext = this.getReleaseContext()
+    this.releaseContext = getActionContext()
+    gh.configureGh(
+      token,
+      `${this.releaseContext.owner}/${this.releaseContext.repo}`
+    )
+    git.configureGitAuth(token)
+    git.fetchTags()
   }
 
   public async onMainBranch(): Promise<boolean> {
@@ -53,71 +123,12 @@ export class GitHubService {
       return false
     }
 
-    try {
-      await this.octokit.repos.getBranch({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        branch: `release-${target}`
-      })
-      return false // Branch exists
-    } catch {
-      return true // Branch does not exist
-    }
-  }
-
-  private getReleaseContext(): ReleaseContext {
-    const { payload, ref, repo } = context
-    const isPullRequest = payload.pull_request !== undefined
-    const pullRequestNumber = isPullRequest
-      ? payload.pull_request?.number
-      : undefined
-    const baseRef = isPullRequest ? payload.pull_request?.base.ref : ref
-    const headRef = isPullRequest ? payload.pull_request?.head.ref : ref
-
-    return {
-      isPullRequest,
-      isPreRelease: false, // Will be set by the action
-      shouldRelease: false, // Will be set by the action
-      pullRequestNumber,
-      baseRef,
-      headRef,
-      owner: repo.owner,
-      repo: repo.repo
-    }
+    return !git.remoteBranchExists(`release-${target}`)
   }
 
   async getCommitCount(ref: string = 'HEAD'): Promise<number> {
-    const { data: commits } = await this.octokit.repos.listCommits({
-      owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo,
-      sha: ref,
-      per_page: 1
-    })
-
-    // Get the total count from the Link header
-    const response = await this.octokit.request(
-      'GET /repos/{owner}/{repo}/commits',
-      {
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        sha: ref,
-        per_page: 1
-      }
-    )
-
-    // Extract the total count from the Link header
-    const linkHeader = response.headers.link
-    if (!linkHeader) {
-      return commits.length
-    }
-
-    // Parse the Link header to get the last page number
-    const lastPageMatch = linkHeader.match(/page=(\d+)>; rel="last"/)
-    if (lastPageMatch) {
-      return parseInt(lastPageMatch[1], 10)
-    }
-
-    return commits.length
+    const resolved = git.resolveRef(ref) ?? 'HEAD'
+    return git.getCommitCount(resolved)
   }
 
   async getPullRequestLabels(): Promise<string[]> {
@@ -128,13 +139,8 @@ export class GitHubService {
       return []
     }
 
-    const { data: pr } = await this.octokit.pulls.get({
-      owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo,
-      pull_number: this.releaseContext.pullRequestNumber
-    })
-
-    return pr.labels.map((label) => label.name)
+    const pr = gh.getPullRequest(this.releaseContext.pullRequestNumber)
+    return pr ? pr.labels : []
   }
 
   getPullRequestNumberFromContext(): number | null {
@@ -156,13 +162,8 @@ export class GitHubService {
       return false
     }
 
-    const { data: pr } = await this.octokit.pulls.get({
-      owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo,
-      pull_number: this.releaseContext.pullRequestNumber
-    })
-
-    return pr.merged
+    const pr = gh.getPullRequest(this.releaseContext.pullRequestNumber)
+    return pr ? pr.merged : false
   }
 
   private generateReleasePRTitle(changes: PackageChanges[]): string {
@@ -178,6 +179,18 @@ export class GitHubService {
     }
   }
 
+  /**
+   * Fails fast (matching the old repos.getBranch behavior) when origin/main
+   * cannot be resolved locally.
+   */
+  private getMainSha(): string {
+    const sha = git.getRemoteBranchSha('main')
+    if (!sha) {
+      throw new Error('Could not resolve origin/main SHA')
+    }
+    return sha
+  }
+
   async createReleasePullRequest(
     changes: PackageChanges[],
     label: string = 'release-me',
@@ -190,15 +203,20 @@ export class GitHubService {
     // Create a new branch with the format 'release-<target>'
     const branchName = `release-${changes[0].releaseTarget}`
 
-    // Get the current main branch SHA
-    const mainSha = await this.getMainSha()
+    // Ensure origin/main exists before doing any work
+    this.getMainSha()
 
     // Update package versions and changelogs locally
-    const treeItems = []
+    const files: git.CommitFileEntry[] = []
+    // Directories whose Cargo.toml just changed -- used below to find and
+    // refresh any Cargo.lock (standalone crate, or a shared workspace lock
+    // at the repo root) so consumers no longer need a separate workflow to
+    // keep it in sync after a version bump.
+    const changedCargoTomlDirs = new Set<string>()
     for (const change of changes) {
       await this.updatePackageVersion(change.path, change.newVersion)
 
-      // Add the updated version file to the tree
+      // Add the updated version file to the set of files to commit
       for (const filePath of [
         path.join(change.path, 'package.json'),
         path.join(change.path, 'Cargo.toml'),
@@ -206,18 +224,10 @@ export class GitHubService {
       ]) {
         if (fs.existsSync(filePath)) {
           const content = fs.readFileSync(filePath, 'utf-8')
-          const { data: blob } = await this.octokit.git.createBlob({
-            owner: this.releaseContext.owner,
-            repo: this.releaseContext.repo,
-            content,
-            encoding: 'utf-8'
-          })
-          treeItems.push({
-            path: filePath,
-            mode: '100644' as const,
-            type: 'blob' as const,
-            sha: blob.sha
-          })
+          files.push({ path: filePath, content })
+          if (filePath.endsWith('Cargo.toml')) {
+            changedCargoTomlDirs.add(change.path)
+          }
         }
       }
 
@@ -249,18 +259,9 @@ export class GitHubService {
         changelogContent = newVersionSection + changelogContent
       }
 
-      // Create blob for the changelog
-      const { data: changelogBlob } = await this.octokit.git.createBlob({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        content: changelogContent.trimEnd() + '\n',
-        encoding: 'utf-8'
-      })
-      treeItems.push({
+      files.push({
         path: changelogPath,
-        mode: '100644' as const,
-        type: 'blob' as const,
-        sha: changelogBlob.sha
+        content: changelogContent.trimEnd() + '\n'
       })
     }
 
@@ -277,108 +278,73 @@ export class GitHubService {
       indentation === 'tab' ? '\t' : ' '.repeat(parseInt(indentation))
     const formattedManifestJSON =
       JSON.stringify(manifest, null, 2).replace(/ {2}/g, indent) + '\n'
-    const updatedManifestContent = formattedManifestJSON
-    const { data: manifestBlob } = await this.octokit.git.createBlob({
-      owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo,
-      content: updatedManifestContent,
-      encoding: 'utf-8'
-    })
-    treeItems.push({
-      path: manifestPath,
-      mode: '100644' as const,
-      type: 'blob' as const,
-      sha: manifestBlob.sha
-    })
+    files.push({ path: manifestPath, content: formattedManifestJSON })
 
-    // Create a tree with the updated files, based on main
-    const { data: tree } = await this.octokit.git.createTree({
-      owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo,
-      base_tree: mainSha,
-      tree: treeItems
-    })
-
-    // Create a commit with the tree, based on main
-    const { data: commit } = await this.octokit.git.createCommit({
-      owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo,
-      message: commitMessage,
-      tree: tree.sha,
-      parents: [mainSha]
-    })
-
-    // Create or update the branch reference
-    try {
-      await this.octokit.git.createRef({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        ref: `refs/heads/${branchName}`,
-        sha: commit.sha
-      })
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message.includes('Reference already exists')
-      ) {
-        // Update existing branch
-        await this.octokit.git.updateRef({
-          owner: this.releaseContext.owner,
-          repo: this.releaseContext.repo,
-          ref: `heads/${branchName}`,
-          sha: commit.sha,
-          force: true
-        })
-      } else {
-        throw error
+    // Refresh Cargo.lock wherever a changed Cargo.toml's version bump would
+    // leave it stale: the crate's own directory (a standalone crate with
+    // its own lockfile) and the repo root (a shared workspace lockfile),
+    // whichever of those actually have a Cargo.lock. `cargo update
+    // --workspace` is the standard way to resync a lockfile's own-package
+    // version entries after a manual Cargo.toml edit -- Cargo.lock embeds
+    // resolved checksums/dependency-graph data that can't be hand-patched
+    // the way Cargo.toml's `version` field can.
+    const cargoLockDirs = new Set<string>()
+    if (changedCargoTomlDirs.size > 0) {
+      for (const dir of ['.', ...changedCargoTomlDirs]) {
+        if (fs.existsSync(path.join(dir, 'Cargo.lock'))) {
+          cargoLockDirs.add(dir)
+        }
       }
     }
+    const postWriteCommands: git.CommitPostWriteCommand[] = [
+      ...cargoLockDirs
+    ].map((cwd) => ({
+      cwd,
+      file: 'cargo' as const,
+      args: ['update', '--workspace']
+    }))
 
-    // Create or update the PR
-    const { data: existingPRs } = await this.octokit.pulls.list({
-      owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo,
-      state: 'open',
-      labels: [`release-target:${changes[0].releaseTarget}`],
-      head: `${this.releaseContext.owner}:${branchName}`
+    // Commit the files to the release branch (creates or force-updates it)
+    git.commitFilesToBranch({
+      branch: branchName,
+      baseRef: 'origin/main',
+      message: commitMessage,
+      files,
+      postWriteCommands,
+      userName: core.getInput('git-user-name'),
+      userEmail: core.getInput('git-user-email')
     })
+
+    // Create or update the PR. The old pulls.list `labels` filter param was
+    // a silent no-op on GitHub's API, so filtering is (and always
+    // effectively was) primarily by head branch.
+    const existingPRs = gh.listOpenPullRequests(branchName)
 
     const body = this.generatePullRequestBody(changes)
 
     if (existingPRs.length > 0) {
       // Update existing PR
-      await this.octokit.pulls.update({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        pull_number: existingPRs[0].number,
-        title,
-        body
-      })
+      gh.updatePullRequest(existingPRs[0].number, title, body)
 
-      if (!existingPRs[0].labels.map((label) => label.name).includes(label)) {
-        await this.addLabel(label, existingPRs[0].number)
-        await this.addLabel(
-          `release-target:${changes[0].releaseTarget}`,
-          existingPRs[0].number
-        )
+      if (!existingPRs[0].labels.includes(label)) {
+        gh.addLabels(existingPRs[0].number, [
+          label,
+          `release-target:${changes[0].releaseTarget}`
+        ])
       }
     } else {
       // Create new PR
-      const newPr = await this.octokit.pulls.create({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
+      const newPrNumber = gh.createPullRequest({
         title,
-        labels: [label, `release-target:${changes[0].releaseTarget}`],
         body,
         head: branchName,
         base: 'main'
       })
 
-      await this.addLabel(label, newPr.data.number)
-      await this.addLabel(
-        `release-target:${changes[0].releaseTarget}`,
-        newPr.data.number
-      )
+      gh.addLabels(newPrNumber, [
+        label,
+        `release-target:${changes[0].releaseTarget}`
+      ])
     }
   }
 
@@ -403,11 +369,8 @@ export class GitHubService {
     // Create a new branch with the format 'release-<target>'
     const branchName = `release-${changes[0].releaseTarget}`
 
-    // Get the current main branch SHA
-    const mainSha = await this.getMainSha()
-
-    // Update package versions and changelogs locally
-    const treeItems = []
+    // Ensure origin/main exists before doing any work
+    this.getMainSha()
 
     // Update the release manifest
     const manifestPath = manifestFile
@@ -418,126 +381,54 @@ export class GitHubService {
     )
     await this.updateManifest(manifest, changes, changes[0].releaseTarget)
     const updatedManifestContent = JSON.stringify(manifest, null, 2) + '\n'
-    const { data: manifestBlob } = await this.octokit.git.createBlob({
-      owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo,
-      content: updatedManifestContent,
-      encoding: 'utf-8'
-    })
-    treeItems.push({
-      path: manifestPath,
-      mode: '100644' as const,
-      type: 'blob' as const,
-      sha: manifestBlob.sha
-    })
 
-    // Create a tree with the updated files, based on main
-    const { data: tree } = await this.octokit.git.createTree({
-      owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo,
-      base_tree: mainSha,
-      tree: treeItems
-    })
+    const files: git.CommitFileEntry[] = [
+      { path: manifestPath, content: updatedManifestContent }
+    ]
 
-    // Create a commit with the tree, based on main
-    const { data: commit } = await this.octokit.git.createCommit({
-      owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo,
+    // Commit the files to the release branch (creates or force-updates it)
+    git.commitFilesToBranch({
+      branch: branchName,
+      baseRef: 'origin/main',
       message: commitMessage,
-      tree: tree.sha,
-      parents: [mainSha]
+      files,
+      userName: core.getInput('git-user-name'),
+      userEmail: core.getInput('git-user-email')
     })
-
-    // Create or update the branch reference
-    try {
-      await this.octokit.git.createRef({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        ref: `refs/heads/${branchName}`,
-        sha: commit.sha
-      })
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message.includes('Reference already exists')
-      ) {
-        // Update existing branch
-        await this.octokit.git.updateRef({
-          owner: this.releaseContext.owner,
-          repo: this.releaseContext.repo,
-          ref: `heads/${branchName}`,
-          sha: commit.sha,
-          force: true
-        })
-      } else {
-        throw error
-      }
-    }
 
     // Create or update the PR
-    const { data: existingPRs } = await this.octokit.pulls.list({
-      owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo,
-      state: 'open',
-      labels: [`release-target:${changes[0].releaseTarget}`],
-      head: `${this.releaseContext.owner}:${branchName}`
-    })
+    const existingPRs = gh.listOpenPullRequests(branchName)
 
     const body = this.generatePullRequestBody(changes)
 
     if (existingPRs.length > 0) {
       // Update existing PR
-      await this.octokit.pulls.update({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        pull_number: existingPRs[0].number,
-        title,
-        body
-      })
+      gh.updatePullRequest(existingPRs[0].number, title, body)
 
-      if (!existingPRs[0].labels.map((label) => label.name).includes(label)) {
-        await this.addLabel(label, existingPRs[0].number)
-        await this.addLabel(
-          `release-target:${changes[0].releaseTarget}`,
-          existingPRs[0].number
-        )
+      if (!existingPRs[0].labels.includes(label)) {
+        gh.addLabels(existingPRs[0].number, [
+          label,
+          `release-target:${changes[0].releaseTarget}`
+        ])
       }
     } else {
       // Create new PR
-      const newPr = await this.octokit.pulls.create({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
+      const newPrNumber = gh.createPullRequest({
         title,
-        labels: [label, `release-target:${changes[0].releaseTarget}`],
         body,
         head: branchName,
         base: 'main'
       })
 
-      await this.addLabel(label, newPr.data.number)
-      await this.addLabel(
-        `release-target:${changes[0].releaseTarget}`,
-        newPr.data.number
-      )
+      gh.addLabels(newPrNumber, [
+        label,
+        `release-target:${changes[0].releaseTarget}`
+      ])
     }
   }
 
-  private async getMainSha(): Promise<string> {
-    const { data } = await this.octokit.repos.getBranch({
-      owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo,
-      branch: 'main'
-    })
-    return data.commit.sha
-  }
-
   async removeLabel(label: string, prNumber: number): Promise<void> {
-    await this.octokit.issues.removeLabel({
-      owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo,
-      issue_number: prNumber,
-      name: label
-    })
+    gh.removeLabel(prNumber, label)
   }
 
   async addLabel(label: string, prNumber: number): Promise<void> {
@@ -550,12 +441,7 @@ export class GitHubService {
       }
     }
 
-    await this.octokit.issues.addLabels({
-      owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo,
-      issue_number: prNumber,
-      labels: [label]
-    })
+    gh.addLabels(prNumber, [label])
   }
 
   private generatePullRequestBody(changes: PackageChanges[]): string {
@@ -568,7 +454,8 @@ export class GitHubService {
 
   async createRelease(
     changes: PackageChanges[],
-    prerelease: boolean = false
+    prerelease: boolean = false,
+    overwriteExistingTags: boolean = true
   ): Promise<void> {
     const manifest = await this.getManifestFromMain(
       core.getInput('manifest-file') ?? '.release-manifest.json',
@@ -592,50 +479,42 @@ export class GitHubService {
           ? versionBase
           : `${basename(change.path)} ${versionBase}`
 
-      // Create tag
-      try {
-        await this.octokit.git.createRef({
-          owner: this.releaseContext.owner,
-          repo: this.releaseContext.repo,
-          ref: `refs/tags/${tagName}`,
-          sha: context.sha,
-          force: true
-        })
-      } catch (error) {
-        if (
-          error instanceof Error &&
-          error.message.includes('Reference already exists')
-        ) {
-          core.warning(`Tag ${tagName} already exists, skipping`)
-        } else {
-          core.setFailed('Failed to create tag')
-          throw error
+      // Create the annotated tag (replaces the old refs/tags createRef +
+      // repos.createRelease pair). The tag message is the changelog -
+      // GitHub Releases are no longer created at all.
+      if (git.tagExists(tagName)) {
+        if (!overwriteExistingTags) {
+          // Hard failure, not a silent skip: continuing past this would
+          // either leave the tag unreleased while the action still claims
+          // success, or (if we kept looping) leave a partial/inconsistent
+          // set of tags pushed for a multi-package release. Abort
+          // immediately so the run fails loudly via main's catch, before
+          // any releases-created/version/versions output is set.
+          throw new Error(
+            `Tag ${tagName} already exists. Refusing to overwrite it. Set ` +
+              `the "overwrite-existing-tags" input to "true" to allow ` +
+              `force-moving existing tags to the current commit.`
+          )
         }
-      }
 
-      // Create release
-      core.info(`Creating release ${releaseName}`)
-
-      try {
-        await this.octokit.repos.createRelease({
-          owner: this.releaseContext.owner,
-          repo: this.releaseContext.repo,
-          tag_name: tagName,
-          name: releaseName,
-          body: change.changelog,
-          draft: false,
-          prerelease: !!prerelease
-        })
-      } catch (error) {
-        if (
-          error instanceof Error &&
-          error.message.includes('already_exists')
-        ) {
-          core.warning(`Release ${releaseName} already exists, skipping`)
-        } else {
-          core.setFailed('Failed to create release')
-          throw error
-        }
+        core.info(
+          `Tag ${tagName} already exists; overwriting it to point at ${this.releaseContext.sha} (overwrite-existing-tags is enabled)`
+        )
+        git.createAnnotatedTag(
+          tagName,
+          change.changelog || releaseName,
+          this.releaseContext.sha,
+          true
+        )
+        git.pushTag(tagName, true)
+      } else {
+        core.info(`Creating release ${releaseName}`)
+        git.createAnnotatedTag(
+          tagName,
+          change.changelog || releaseName,
+          this.releaseContext.sha
+        )
+        git.pushTag(tagName)
       }
 
       versions.push({
@@ -662,6 +541,29 @@ export class GitHubService {
   }
 
   /**
+   * Check if a tag name is a prerelease tag.
+   */
+  private isPrereleaseTag(tagName: string): boolean {
+    return (
+      tagName.includes('-rc.') ||
+      tagName.includes('-alpha') ||
+      tagName.includes('-beta') ||
+      tagName.includes('-pre')
+    )
+  }
+
+  /**
+   * Get the most recent non-prerelease tag (for any package). Replaces the
+   * old hybrid tags-then-Releases-API lookup now that Releases are dropped
+   * entirely.
+   */
+  private getLatestReleaseTag(): string | null {
+    const tags = git.listTagsByDateDesc()
+    const tag = tags.find((tagName) => !this.isPrereleaseTag(tagName))
+    return tag ?? null
+  }
+
+  /**
    * Fetch all commits (with files) since the last release (or fallback) for the repo.
    * Returns the array of commits (with files) for further filtering.
    */
@@ -669,7 +571,7 @@ export class GitHubService {
     checkPaths: boolean = true
   ): Promise<Commit[]> {
     // Get the most recent non-prerelease release tag (for any package)
-    const lastReleaseTag = await this.getLatestReleaseTag()
+    const lastReleaseTag = this.getLatestReleaseTag()
 
     // If no release found, get commits since the beginning
     let base: string
@@ -682,207 +584,58 @@ export class GitHubService {
       base = `HEAD~${lookbackCount - 1}`
     }
 
+    const head = git.resolveRef(this.releaseContext.headRef) ?? 'HEAD'
+
     core.info(
-      `Getting all commits since last release with base ${base} and head ${this.releaseContext.headRef}...`
+      `Getting all commits since last release with base ${base} and head ${head}...`
     )
 
-    let allCommits: Commit[] = []
-    let page = 1
-    let hasMorePages = true
+    const gitCommits = git.getCommitsBetween(base, head, checkPaths)
 
-    while (hasMorePages) {
-      core.info(`Fetching page ${page} of commits...`)
-      const response = await this.octokit.request(
-        'GET /repos/{owner}/{repo}/compare/{basehead}',
-        {
-          owner: this.releaseContext.owner,
-          repo: this.releaseContext.repo,
-          basehead: `${base}...${this.releaseContext.headRef}`,
-          mediaType: {
-            format: 'json'
-          },
-          per_page: 100,
-          page
-        }
-      )
+    // Filter commits to only include those that would be relevant for a
+    // version bump
+    const commits: Commit[] = gitCommits
+      .filter((commit) => {
+        core.debug(commit.message.split('\n')[0])
 
-      // If there are no commits in the response, break early
-      if (!response.data.commits || response.data.commits.length === 0) {
-        break
-      }
-
-      // filter commits to only include those that would be relevant for a version bump
-      const commits = response.data.commits.filter((commit) => {
-        core.debug(commit.commit.message.split('\n')[0])
-
-        const conventionalCommit = parseConventionalCommit(
-          commit.commit.message
-        )
+        const conventionalCommit = parseConventionalCommit(commit.message)
 
         return determineVersionBump([conventionalCommit]) !== 'none'
       })
+      .map((commit) => ({
+        sha: commit.sha,
+        commit: { message: commit.message },
+        files: commit.files.map((filename) => ({
+          filename,
+          status: '',
+          additions: 0,
+          deletions: 0,
+          changes: 0
+        }))
+      }))
 
-      core.info(
-        `Considering ${commits.length}/${response.data.commits.length} relevant commits on page ${page}`
-      )
-
-      // If there are no relevant commits, break early
-      if (commits.length === 0) {
-        break
-      }
-
-      // Fetch commit details for each commit to get files
-      if (checkPaths) {
-        for (const commit of commits) {
-          const commitResponse = await this.octokit.request(
-            'GET /repos/{owner}/{repo}/commits/{ref}',
-            {
-              owner: this.releaseContext.owner,
-              repo: this.releaseContext.repo,
-              ref: commit.sha
-              // No mediaType needed; default is JSON and includes files
-            }
-          )
-          commit.files = commitResponse.data.files
-        }
-      }
-
-      allCommits = allCommits.concat(commits)
-
-      // Check if we have more pages
-      const linkHeader = response.headers.link
-      hasMorePages = linkHeader?.includes('rel="next"') ?? false
-      page++
-    }
-
-    core.info(`Total commits found: ${allCommits.length}`)
-    return allCommits
+    core.info(`Total commits found: ${commits.length}`)
+    return commits
   }
 
-  /**
-   * Get tags sorted by creation date (newest first) with error handling.
-   */
-  private async getSortedTags(
-    perPage: number = 100
-  ): Promise<{ name: string }[]> {
-    try {
-      const { data: tags } = await this.octokit.repos.listTags({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        per_page: perPage,
-        sort: 'created',
-        direction: 'desc'
-      })
-      return tags
-    } catch (error) {
-      console.warn('Error getting tags:', error)
-      return []
-    }
-  }
-
-  /**
-   * Get releases sorted by creation date (newest first).
-   */
-  private async getSortedReleases(): Promise<
-    { tag_name: string; prerelease: boolean; created_at: string }[]
-  > {
-    try {
-      let allReleases: {
-        tag_name: string
-        prerelease: boolean
-        created_at: string
-      }[] = []
-      let page = 1
-      let hasMorePages = true
-
-      while (hasMorePages) {
-        core.debug(`Fetching page ${page} of releases...`)
-        const response = await this.octokit.repos.listReleases({
-          owner: this.releaseContext.owner,
-          repo: this.releaseContext.repo,
-          per_page: 100,
-          page
-        })
-
-        // If there are no releases in the response, break early
-        if (!response.data || response.data.length === 0) {
-          break
-        }
-
-        allReleases = allReleases.concat(response.data)
-
-        // Check if we have more pages
-        const linkHeader = response.headers.link
-        hasMorePages = linkHeader?.includes('rel="next"') ?? false
-        page++
-      }
-      core.debug(`Found ${allReleases.length} releases`)
-
-      return allReleases.sort((a, b) => {
-        const dateA = new Date(a.created_at).getTime()
-        const dateB = new Date(b.created_at).getTime()
-        return dateB - dateA
-      })
-    } catch (error) {
-      console.warn('Error getting releases:', error)
-      return []
-    }
-  }
-
-  /**
-   * Check if a tag name is a prerelease tag.
-   */
-  private isPrereleaseTag(tagName: string): boolean {
-    return (
-      tagName.includes('-rc.') ||
-      tagName.includes('-alpha') ||
-      tagName.includes('-beta') ||
-      tagName.includes('-pre')
-    )
+  private escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   }
 
   async getLastReleaseVersion(packagePath: string): Promise<string | null> {
     try {
-      // Try to get the latest release using tags first (more efficient)
-      const lastReleaseFromTags =
-        await this.getLastReleaseVersionFromTags(packagePath)
-      if (lastReleaseFromTags) {
-        return lastReleaseFromTags
-      }
-
-      // Fallback to releases if tags don't work
-      const sortedReleases = await this.getSortedReleases()
-
-      // Find the most recent non-prerelease release for this package
-      const lastRelease = sortedReleases.find((release) => {
-        if (release.prerelease) return false
-        const tagName = release.tag_name
-        if (packagePath === '.') {
-          // For root package, look for tags without package prefix
-          return !tagName.includes('/')
-        } else {
-          // For specific packages, look for tags with package prefix
-          const packageName = basename(packagePath)
-          return tagName.startsWith(`${packageName}-v`)
-        }
-      })
-
-      return lastRelease ? lastRelease.tag_name : null
+      return this.getLastReleaseVersionFromTags(packagePath)
     } catch (error) {
       console.warn('Error getting last release version:', error)
       return null
     }
   }
 
-  private async getLastReleaseVersionFromTags(
-    packagePath: string
-  ): Promise<string | null> {
-    const tags = await this.getSortedTags()
+  private getLastReleaseVersionFromTags(packagePath: string): string | null {
+    const tags = git.listTagsByDateDesc()
 
     // Find the most recent non-prerelease tag for this package
-    const lastTag = tags.find((tag) => {
-      const tagName = tag.name
-
+    const lastTag = tags.find((tagName) => {
       // Skip prerelease tags
       if (this.isPrereleaseTag(tagName)) {
         return false
@@ -898,7 +651,7 @@ export class GitHubService {
       }
     })
 
-    return lastTag ? lastTag.name : null
+    return lastTag ?? null
   }
 
   async getLatestRcVersion(
@@ -906,108 +659,66 @@ export class GitHubService {
     baseVersion: string
   ): Promise<number> {
     try {
-      // Try to get the latest RC version using tags first (more efficient)
-      const latestRcFromTags = await this.getLatestRcVersionFromTags(
+      const latestRcFromTags = this.getLatestRcVersionFromTags(
         packagePath,
         baseVersion
       )
-      if (latestRcFromTags !== null) {
-        return latestRcFromTags + 1 // Return next RC number
-      }
-
-      // Fallback to releases if tags don't work
-      const sortedReleases = await this.getSortedReleases()
-
-      // Find the latest RC version for this package
-      const packageName = basename(packagePath)
-      const rcRegex = new RegExp(`${packageName}-v${baseVersion}-rc\\.(\\d+)`)
-      const latestRc = sortedReleases
-        .filter((release) => rcRegex.test(release.tag_name))
-        .map((release) => {
-          const match = release.tag_name.match(rcRegex)
-          return match ? parseInt(match[1]) : 0
-        })
-        .sort((a, b) => b - a)[0]
-
-      return (latestRc || 0) + 1 // Return next RC number
+      return (latestRcFromTags ?? 0) + 1 // Return next RC number
     } catch (error) {
       console.warn('Error getting latest RC version:', error)
       return 1 // Default to RC.1 if error
     }
   }
 
-  private async getLatestRcVersionFromTags(
+  /**
+   * Finds the latest RC number for a package's base version. FIXED (bug
+   * present in the old Octokit implementation): the regex is now built from
+   * basename(packagePath) - matching how tags are actually named in
+   * createRelease() - rather than the raw packagePath, and is anchored with
+   * escaped dots so it cannot match unrelated tags.
+   *
+   * ALSO FIXED: for the root package, packagePath is '.', so
+   * basename('.') is '.' -- that produced the regex `^\.-v...`, which can
+   * never match, because createRelease() tags the root package with NO
+   * prefix at all (`v<version>-rc.<n>`, only subpackages get a
+   * `<basename>-` prefix). Root RC lookup therefore always returned null
+   * (-> RC.1) here, and combined with the tag-already-exists guard in
+   * createRelease, every prerelease after the first for the same root base
+   * version collided with the existing v<version>-rc.1 tag.
+   */
+  private getLatestRcVersionFromTags(
     packagePath: string,
     baseVersion: string
-  ): Promise<number | null> {
-    const tags = await this.getSortedTags()
+  ): number | null {
+    const tags = git.listTagsByDateDesc()
+    const escapedBaseVersion = this.escapeRegExp(baseVersion)
+    const rcRegex =
+      packagePath === '.'
+        ? new RegExp(`^v${escapedBaseVersion}-rc\\.(\\d+)$`)
+        : new RegExp(
+            `^${this.escapeRegExp(basename(packagePath))}-v${escapedBaseVersion}-rc\\.(\\d+)$`
+          )
 
-    // Find the latest RC version for this package
-    const rcRegex = new RegExp(`${packagePath}-v${baseVersion}-rc\\.(\\d+)`)
     const latestRc = tags
-      .filter((tag) => rcRegex.test(tag.name))
-      .map((tag) => {
-        const match = tag.name.match(rcRegex)
-        return match ? parseInt(match[1]) : 0
+      .filter((tagName) => rcRegex.test(tagName))
+      .map((tagName) => {
+        const match = tagName.match(rcRegex)
+        return match ? parseInt(match[1], 10) : 0
       })
       .sort((a, b) => b - a)[0]
 
     return latestRc || null
   }
 
-  private async getLatestReleaseTagName(): Promise<string | null> {
-    const latestRelease = await this.octokit.repos.getLatestRelease({
-      owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo
-    })
-
-    if (!latestRelease || latestRelease.data.prerelease) {
-      return null
-    }
-
-    return latestRelease.data.tag_name
-  }
-
-  /**
-   * Get the most recent non-prerelease release tag (for any package).
-   * Uses hybrid approach: tags first, then fallback to releases.
-   */
-  private async getLatestReleaseTag(): Promise<string | null> {
-    try {
-      // Try to get the latest release using tags first (more efficient)
-      const latestTag = await this.getLatestReleaseTagName()
-      if (latestTag) {
-        return latestTag
-      }
-
-      // Fallback to releases if tags don't work
-      const sortedReleases = await this.getSortedReleases()
-
-      // Find the most recent non-prerelease release (for any package)
-      const lastRelease = sortedReleases.find((release) => !release.prerelease)
-
-      return lastRelease ? lastRelease.tag_name : null
-    } catch (error) {
-      console.warn('Error getting latest release tag:', error)
-      return null
-    }
-  }
-
   async getChangelogForPackage(packagePath: string): Promise<string> {
     try {
       const changelogPath = path.join(packagePath, 'CHANGELOG.md')
-      const { data } = await this.octokit.repos.getContent({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        path: changelogPath,
-        ref: 'main'
-      })
+      const content = git.getFileAtRef('origin/main', changelogPath)
 
-      if (!('content' in data)) {
+      if (content === null) {
         return ''
       }
 
-      const content = Buffer.from(data.content, 'base64').toString('utf-8')
       const lines = content.split('\n')
 
       // Find the first version section
@@ -1032,16 +743,15 @@ export class GitHubService {
     releaseTarget: string
   ): Promise<number | null> {
     try {
-      // Get all closed PRs with release-me label
-      const { data: prs } = await this.octokit.pulls.list({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        state: 'closed',
-        labels: ['release-me', `release-target:${releaseTarget}`],
-        sort: 'updated',
-        direction: 'desc',
-        per_page: 10 // Look at the 10 most recent ones
-      })
+      // Get the most recently updated closed PRs. Matching is
+      // title-primary: gh's --label filter (unlike the old octokit
+      // pulls.list, whose labels param was a silent no-op) actually
+      // filters server-side, so applying it here as a hard requirement
+      // would miss release PRs whose labels never got applied (e.g. a
+      // failed addLabels call after merge, or a consumer-supplied custom
+      // label). Labels are therefore used only as a secondary/bonus signal
+      // below, matching the old effective behavior.
+      const prs = gh.listClosedReleasePullRequests(10)
 
       // Convert manifest to PackageChanges format
       const changes: PackageChanges[] = Object.entries(manifest).map(
@@ -1052,16 +762,28 @@ export class GitHubService {
           newVersion: newVersion.latest,
           commits: [], // We don't need this for title matching
           changelog: '', // We don't need this for title matching
-          releaseTarget: 'main'
+          releaseTarget // FIX: previously hardcoded to 'main'
         })
       )
 
       // Generate the expected title
       const expectedTitle = this.generateReleasePRTitle(changes)
 
-      // Find the first PR that matches our title
-      const matchingPR = prs.find((pr) => pr.title === expectedTitle)
-      return matchingPR ? matchingPR.number : null
+      // Find every PR that matches our title.
+      const titleMatches = prs.filter((pr) => pr.title === expectedTitle)
+      if (titleMatches.length === 0) {
+        return null
+      }
+
+      // Prefer a match that also carries the expected release labels (a
+      // bonus signal, never a requirement), falling back to the first
+      // title match otherwise.
+      const expectedLabels = ['release-me', `release-target:${releaseTarget}`]
+      const labeledMatch = titleMatches.find((pr) =>
+        expectedLabels.every((label) => pr.labels.includes(label))
+      )
+
+      return (labeledMatch ?? titleMatches[0]).number
     } catch (error) {
       core.warning(`Failed to find release PR: ${error}`)
       return null
@@ -1072,12 +794,7 @@ export class GitHubService {
     if (!this.releaseContext.pullRequestNumber) {
       return
     }
-    await this.octokit.issues.createComment({
-      owner: this.releaseContext.owner,
-      repo: this.releaseContext.repo,
-      issue_number: this.releaseContext.pullRequestNumber,
-      body
-    })
+    gh.createComment(this.releaseContext.pullRequestNumber, body)
   }
 
   async updatePackageVersion(
@@ -1099,20 +816,22 @@ export class GitHubService {
         JSON.stringify(packageJson, null, 2).replace(/ {2}/g, indent) + '\n'
       fs.writeFileSync(packageJsonPath, formattedJSON)
     } else if (fs.existsSync(cargoTomlPath)) {
-      const cargoToml = toml.parse(fs.readFileSync(cargoTomlPath, 'utf-8'))
-      if (cargoToml.package) {
-        ;(cargoToml.package as unknown as { version: string }).version =
-          newVersion
-        fs.writeFileSync(cargoTomlPath, toml.stringify(cargoToml))
+      const updated = replaceTomlVersion(
+        fs.readFileSync(cargoTomlPath, 'utf-8'),
+        'package',
+        newVersion
+      )
+      if (updated !== null) {
+        fs.writeFileSync(cargoTomlPath, updated)
       }
     } else if (fs.existsSync(pyprojectTomlPath)) {
-      const pyprojectToml = toml.parse(
-        fs.readFileSync(pyprojectTomlPath, 'utf-8')
+      const updated = replaceTomlVersion(
+        fs.readFileSync(pyprojectTomlPath, 'utf-8'),
+        'project',
+        newVersion
       )
-      if (pyprojectToml.project) {
-        ;(pyprojectToml.project as unknown as { version: string }).version =
-          newVersion
-        fs.writeFileSync(pyprojectTomlPath, toml.stringify(pyprojectToml))
+      if (updated !== null) {
+        fs.writeFileSync(pyprojectTomlPath, updated)
       }
     } else if (fs.existsSync(versionTxtPath)) {
       // For version.txt, we just write the version number directly
@@ -1126,21 +845,16 @@ export class GitHubService {
 
   async getPullRequestFromCommit(sha: string): Promise<number | null> {
     try {
-      const { data: prs } =
-        await this.octokit.repos.listPullRequestsAssociatedWithCommit({
-          owner: this.releaseContext.owner,
-          repo: this.releaseContext.repo,
-          commit_sha: sha
-        })
+      const prs = gh.getMergedPullRequestsForCommit(sha)
 
       // Find the most recently merged PR
-      const mergedPRs = prs.filter((pr) => pr.merged_at !== null)
+      const mergedPRs = prs.filter((pr) => pr.merged)
       if (mergedPRs.length === 0) return null
 
       // Sort by merged_at date in descending order
       mergedPRs.sort((a, b) => {
-        const dateA = new Date(a.merged_at as string).getTime()
-        const dateB = new Date(b.merged_at as string).getTime()
+        const dateA = new Date(a.mergedAt as string).getTime()
+        const dateB = new Date(b.mergedAt as string).getTime()
         return dateB - dateA
       })
 
@@ -1153,12 +867,8 @@ export class GitHubService {
 
   async wasReleasePR(prNumber: number): Promise<boolean> {
     try {
-      const { data: pr } = await this.octokit.pulls.get({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        pull_number: prNumber
-      })
-      return pr.labels.some((label) => label.name === 'release-me')
+      const pr = gh.getPullRequest(prNumber)
+      return pr ? pr.labels.includes('release-me') : false
     } catch (error) {
       core.warning(`Failed to get PR ${prNumber}: ${error}`)
       return false
@@ -1172,20 +882,14 @@ export class GitHubService {
     try {
       const filePath =
         rootDir === '.' ? manifestFile : path.join(rootDir, manifestFile)
-      const { data } = await this.octokit.repos.getContent({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        path: filePath,
-        ref: 'main'
-      })
+      const content = git.getFileAtRef('origin/main', filePath)
 
-      if (!('content' in data)) {
+      if (content === null) {
         throw new Error(
           `Manifest file ${manifestFile} not found in main branch`
         )
       }
 
-      const content = Buffer.from(data.content, 'base64').toString('utf-8')
       const manifest = JSON.parse(content)
 
       // Convert old manifest format to new format if needed
@@ -1217,31 +921,9 @@ export class GitHubService {
     try {
       const filePath =
         rootDir === '.' ? manifestFile : path.join(rootDir, manifestFile)
-      const { data: commits } = await this.octokit.repos.listCommits({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        branch: this.releaseContext.headRef,
-        per_page: 1
-      })
 
-      if (commits.length === 0) {
-        core.debug('No commits found with the manifest file')
-        return false
-      }
-
-      const latestCommit = commits[0]
-      const { data: commit } = await this.octokit.repos.getCommit({
-        owner: this.releaseContext.owner,
-        repo: this.releaseContext.repo,
-        ref: latestCommit.sha
-      })
-
-      const manifestUpdated =
-        commit.files?.some(
-          (file) =>
-            file.filename === filePath &&
-            file.patch?.includes(`"${releaseTarget}":`)
-        ) ?? false
+      const patch = git.getLastCommitDiffForFile(filePath, 'HEAD')
+      const manifestUpdated = patch.includes(`"${releaseTarget}":`)
 
       core.debug(`Manifest updated: ${manifestUpdated}`)
       return manifestUpdated
@@ -1330,5 +1012,14 @@ export class GitHubService {
     })
 
     return filteredCommits.map((commit) => commit.commit.message)
+  }
+
+  /**
+   * Returns the SHA the action is currently running against (from
+   * GITHUB_SHA), used by createRelease for tagging and exposed so
+   * src/main.ts no longer needs to import @actions/github's context.
+   */
+  getContextSha(): string {
+    return this.releaseContext.sha
   }
 }

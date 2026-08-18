@@ -34,12 +34,32 @@ inputs:
       "latest"'
     required: false
     default: 'main'
+  overwrite-existing-tags:
+    description:
+      'Whether to force-move a release tag that already exists to the current
+      commit instead of failing the run. Defaults to "true" to match this
+      action''s pre-2.x behavior. DEPRECATED: this default will change to
+      "false" in a future release, after which a tag collision will fail the run
+      unless this is explicitly set to "true". Set it explicitly now to avoid a
+      behavior change later.'
+    required: false
+    default: 'true'
   indentation:
     description:
       'The indentation to use for json files, can be "tab" or a number of
       spaces. Default is 2 spaces.'
     required: false
     default: '2'
+  git-user-name:
+    description:
+      'The git user name to use for release commits created by this action'
+    required: false
+    default: 'github-actions[bot]'
+  git-user-email:
+    description:
+      'The git user email to use for release commits created by this action'
+    required: false
+    default: '41898282+github-actions[bot]@users.noreply.github.com'
 
 outputs:
   releases-created:
