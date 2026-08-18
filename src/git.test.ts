@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as git from './git'
-import { execCommand, ExecResult } from './exec.js'
+import { execCommand, ExecError, ExecResult } from './exec.js'
 
 // Mock the single subprocess touchpoint so every test asserts the exact
 // argv arrays passed to git. This doubles as the injection-safety
@@ -534,27 +534,189 @@ describe('pushTag', () => {
     ])
   })
 
-  it('authenticates with the configured token via env, not argv, when configureGitAuth was called', () => {
+  const EXTRAHEADER_KEY = 'http.https://github.com/.extraheader'
+  const CRED_FILE = '/home/runner/work/_temp/git-credentials-abc.config'
+  const SHOW_ORIGIN_LINE = `file:${CRED_FILE}\tAUTHORIZATION: basic CHECKOUT_ORIGINAL`
+
+  it('resolves the real file a checkout-persisted extraheader lives in, clears just that file, authenticates, and restores it', () => {
+    delete process.env.GITHUB_SERVER_URL
+    mockExec.mockImplementation((_file, args) => {
+      if (
+        args.join(' ') === `config --show-origin --get-all ${EXTRAHEADER_KEY}`
+      ) {
+        return ok(`${SHOW_ORIGIN_LINE}\n`)
+      }
+      return ok('')
+    })
     git.configureGitAuth('super-secret-pat')
 
     git.pushTag('v1.2.3')
 
-    const [file, args, options] = mockExec.mock.calls[0]
-    expect(file).toBe('git')
-    expect(args).toEqual(['push', 'origin', 'refs/tags/v1.2.3'])
-    // The token must never appear in argv (visible via `ps`).
-    expect(args.join(' ')).not.toContain('super-secret-pat')
+    const calls = mockExec.mock.calls
+    // Regression coverage, round 2: the first fix (capture/unset-all/
+    // restore via `git config --local`) still failed in production. Root
+    // cause: actions/checkout (persist-credentials: true, the default)
+    // does NOT write its Authorization extraheader directly into
+    // .git/config -- it writes it to a SEPARATE temp credentials file,
+    // wired in via an includeIf.gitdir directive. `--local
+    // --get-all`/`--unset-all` only ever touch .git/config itself, so they
+    // silently see/change nothing for an include-resolved value -- verified
+    // directly against the real git binary (git config --local --get-all
+    // returns nothing for such a value, while an unscoped --get-all finds
+    // it). `--show-origin --get-all` reveals the REAL file, which must be
+    // targeted directly via `git config --file <that file>` to actually
+    // remove (and later restore) the value -- also verified end-to-end
+    // with GIT_CURL_VERBOSE against a real GitHub remote.
+    const showOriginIndex = calls.findIndex(
+      (call) =>
+        call[1].join(' ') ===
+        `config --show-origin --get-all ${EXTRAHEADER_KEY}`
+    )
+    const unsetIndex = calls.findIndex(
+      (call) =>
+        call[1].join(' ') ===
+        `config --file ${CRED_FILE} --unset-all ${EXTRAHEADER_KEY}`
+    )
+    const pushIndex = calls.findIndex((call) => call[1].includes('push'))
+    const addIndex = calls.findIndex(
+      (call) =>
+        call[1].join(' ') ===
+        `config --file ${CRED_FILE} --add ${EXTRAHEADER_KEY} AUTHORIZATION: basic CHECKOUT_ORIGINAL`
+    )
+    expect(showOriginIndex).toBeGreaterThanOrEqual(0)
+    expect(unsetIndex).toBeGreaterThan(showOriginIndex)
+    expect(pushIndex).toBeGreaterThan(unsetIndex)
+    expect(addIndex).toBeGreaterThan(pushIndex)
 
-    const env = (options as { env?: NodeJS.ProcessEnv }).env
-    expect(env).toBeDefined()
-    expect(env?.GIT_CONFIG_COUNT).toBe('1')
-    expect(env?.GIT_CONFIG_KEY_0).toBe('http.https://github.com/.extraheader')
+    const [, pushArgs, pushOptions] = calls[pushIndex]
+    expect(pushArgs).toEqual(['push', 'origin', 'refs/tags/v1.2.3'])
+    // The token must never appear in argv (visible via `ps`).
+    expect(pushArgs.join(' ')).not.toContain('super-secret-pat')
+
+    const env = (pushOptions as { env?: NodeJS.ProcessEnv }).env
     const expectedAuth = Buffer.from(
       'x-access-token:super-secret-pat'
     ).toString('base64')
+    expect(env?.GIT_CONFIG_COUNT).toBe('1')
+    expect(env?.GIT_CONFIG_KEY_0).toBe(EXTRAHEADER_KEY)
     expect(env?.GIT_CONFIG_VALUE_0).toBe(`AUTHORIZATION: basic ${expectedAuth}`)
 
-    // Reset module-level auth state for subsequent tests.
+    git.configureGitAuth('')
+  })
+
+  it('restores the checkout-persisted extraheader (in its real file) even when the push itself throws', () => {
+    mockExec.mockImplementation((_file, args) => {
+      if (
+        args.join(' ') === `config --show-origin --get-all ${EXTRAHEADER_KEY}`
+      ) {
+        return ok(`${SHOW_ORIGIN_LINE}\n`)
+      }
+      if (args.includes('push')) {
+        throw new ExecError('git push', 128, 'push rejected')
+      }
+      return ok('')
+    })
+    git.configureGitAuth('super-secret-pat')
+
+    expect(() => git.pushTag('v1.2.3')).toThrow('push rejected')
+
+    expect(
+      mockExec.mock.calls.some(
+        (call) =>
+          call[1].join(' ') ===
+          `config --file ${CRED_FILE} --add ${EXTRAHEADER_KEY} AUTHORIZATION: basic CHECKOUT_ORIGINAL`
+      )
+    ).toBe(true)
+
+    git.configureGitAuth('')
+  })
+
+  it('treats a genuine "not found" exit code the same as nothing configured', () => {
+    mockExec.mockImplementation((_file, args) => {
+      if (
+        args.join(' ') === `config --show-origin --get-all ${EXTRAHEADER_KEY}`
+      ) {
+        return fail(1)
+      }
+      return ok('')
+    })
+    git.configureGitAuth('super-secret-pat')
+
+    git.pushTag('v1.2.3')
+
+    expect(
+      mockExec.mock.calls.some((call) => call[1].includes('--unset-all'))
+    ).toBe(false)
+    expect(mockExec.mock.calls.some((call) => call[1].includes('--add'))).toBe(
+      false
+    )
+    const pushCall = mockExec.mock.calls.find((call) =>
+      call[1].includes('push')
+    )
+    expect(
+      (pushCall?.[2] as { env?: NodeJS.ProcessEnv } | undefined)?.env
+        ?.GIT_CONFIG_KEY_0
+    ).toBe(EXTRAHEADER_KEY)
+
+    git.configureGitAuth('')
+  })
+
+  it('ignores a non-file config origin (nothing to safely remove)', () => {
+    mockExec.mockImplementation((_file, args) => {
+      if (
+        args.join(' ') === `config --show-origin --get-all ${EXTRAHEADER_KEY}`
+      ) {
+        return ok('command line:\tAUTHORIZATION: basic FROM_CLI\n')
+      }
+      return ok('')
+    })
+    git.configureGitAuth('super-secret-pat')
+
+    git.pushTag('v1.2.3')
+
+    expect(
+      mockExec.mock.calls.some((call) => call[1].includes('--unset-all'))
+    ).toBe(false)
+    expect(mockExec.mock.calls.some((call) => call[1].includes('--add'))).toBe(
+      false
+    )
+
+    git.configureGitAuth('')
+  })
+
+  it('derives the extraheader key from GITHUB_SERVER_URL for GitHub Enterprise Server', () => {
+    process.env.GITHUB_SERVER_URL = 'https://github.example.com'
+    git.configureGitAuth('super-secret-pat')
+
+    git.pushTag('v1.2.3')
+
+    const pushCall = mockExec.mock.calls.find((call) =>
+      call[1].includes('push')
+    )
+    const env = (pushCall?.[2] as { env?: NodeJS.ProcessEnv } | undefined)?.env
+    expect(env?.GIT_CONFIG_KEY_0).toBe(
+      'http.https://github.example.com/.extraheader'
+    )
+
+    delete process.env.GITHUB_SERVER_URL
+    git.configureGitAuth('')
+  })
+
+  it('skips capture/unset/restore entirely when nothing was persisted (e.g. persist-credentials: false)', () => {
+    // Default mock: `config --show-origin --get-all` returns ok('') --
+    // empty stdout, exit 0 -- which must be treated as "nothing to
+    // restore", not as a single empty-string entry to restore later.
+    git.configureGitAuth('super-secret-pat')
+
+    git.pushTag('v1.2.3')
+
+    expect(
+      mockExec.mock.calls.some((call) => call[1].includes('unset-all'))
+    ).toBe(false)
+    expect(mockExec.mock.calls.some((call) => call[1].includes('--add'))).toBe(
+      false
+    )
+
     git.configureGitAuth('')
   })
 
@@ -563,12 +725,14 @@ describe('pushTag', () => {
 
     git.pushTag('v1.2.3')
 
-    // Exactly the 2-arg call: no options object, so no env override applied.
+    // Exactly the 2-arg call: no options object, no config get/unset/add
+    // calls at all.
     expect(mockExec).toHaveBeenCalledWith('git', [
       'push',
       'origin',
       'refs/tags/v1.2.3'
     ])
+    expect(mockExec.mock.calls).toHaveLength(1)
   })
 })
 
@@ -1017,11 +1181,19 @@ describe('commitFilesToBranch', () => {
     )
   })
 
-  it('authenticates the push with the configured token, scoped to the push call only', () => {
+  it('authenticates the push with the configured token, scoped to the push call only, resolving the real credential file from the worktree dir', () => {
+    const credFile = '/home/runner/work/_temp/git-credentials-abc.config'
     git.configureGitAuth('super-secret-pat')
-    mockExec.mockImplementation((_file, args) =>
-      args.includes('rev-parse') ? ok('newsha123\n') : ok('')
-    )
+    mockExec.mockImplementation((_file, args) => {
+      if (args.includes('rev-parse')) return ok('newsha123\n')
+      if (
+        args.join(' ') ===
+        `-C ${worktreeDir} config --show-origin --get-all http.https://github.com/.extraheader`
+      ) {
+        return ok(`file:${credFile}\tAUTHORIZATION: basic CHECKOUT_ORIGINAL\n`)
+      }
+      return ok('')
+    })
 
     git.commitFilesToBranch(options)
 
@@ -1031,6 +1203,25 @@ describe('commitFilesToBranch', () => {
     expect(pushCall).toBeDefined()
     const env = (pushCall?.[2] as { env?: NodeJS.ProcessEnv } | undefined)?.env
     expect(env?.GIT_CONFIG_KEY_0).toBe('http.https://github.com/.extraheader')
+
+    // The show-origin lookup is scoped to the worktree dir (whose own
+    // includeIf.gitdir entry may differ from the main clone's) via -C, but
+    // the resulting unset/add target the REAL credential file directly via
+    // --file, not -C (a plain path, independent of any repo/worktree).
+    expect(
+      mockExec.mock.calls.some(
+        (call) =>
+          call[1].join(' ') ===
+          `config --file ${credFile} --unset-all http.https://github.com/.extraheader`
+      )
+    ).toBe(true)
+    expect(
+      mockExec.mock.calls.some(
+        (call) =>
+          call[1].join(' ') ===
+          `config --file ${credFile} --add http.https://github.com/.extraheader AUTHORIZATION: basic CHECKOUT_ORIGINAL`
+      )
+    ).toBe(true)
 
     // The commit and worktree-add calls are untouched by the auth override.
     const commitCall = mockExec.mock.calls.find((call) =>
