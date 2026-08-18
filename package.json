@@ -34,7 +34,6 @@
   "license": "MIT",
   "dependencies": {
     "@actions/core": "^3.0.1",
-    "@iarna/toml": "^3.0.0",
     "semver": "^7.7.4"
   },
   "devDependencies": {

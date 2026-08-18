@@ -7,7 +7,6 @@ import {
 } from './types.js'
 import * as fs from 'fs'
 import * as path from 'path'
-import * as toml from '@iarna/toml'
 import { determineVersionBump, parseConventionalCommit } from './version.js'
 import { basename } from 'path'
 import { getActionContext } from './context.js'
@@ -28,6 +27,65 @@ interface Commit {
     message: string
   }
   files?: CommitFile[]
+}
+
+/**
+ * Replaces the `version = "..."` field inside a TOML file's top-level
+ * `[tableName]` table (e.g. Cargo.toml's `[package]`, pyproject.toml's
+ * `[project]`) via a targeted string replacement, rather than a full
+ * parse-and-reserialize round trip. A round trip through a TOML
+ * stringifier reformats the whole file -- reordering keys, dropping
+ * comments, changing quote/whitespace style -- which was forcing consumers
+ * to run a separate formatter (e.g. `taplo fmt`) after every release PR
+ * just to undo it. This only ever touches the exact characters between the
+ * version field's quotes, so everything else in the file, including
+ * comments and dependency version specifiers elsewhere in the document, is
+ * untouched byte-for-byte.
+ *
+ * Returns null (leaving the file alone, matching the old
+ * `if (parsed.package)`-guarded behavior) when the file has no
+ * `[tableName]` table or no `version` field within it -- e.g. a Cargo
+ * workspace root that only has a `[workspace]` table.
+ */
+function replaceTomlVersion(
+  content: string,
+  tableName: string,
+  newVersion: string
+): string | null {
+  const headerRegex = new RegExp(
+    `^\\[${tableName}\\][ \\t]*(?:#.*)?[ \\t]*\\r?\\n`,
+    'm'
+  )
+  const headerMatch = headerRegex.exec(content)
+  if (!headerMatch) {
+    return null
+  }
+
+  // The section runs until the next top-level table header (`[...]`, not
+  // `[[...]]`... a `[[` line still starts with `[` so this also correctly
+  // stops there) or end of file.
+  const sectionStart = headerMatch.index + headerMatch[0].length
+  const rest = content.slice(sectionStart)
+  const nextHeaderMatch = /^\[[^\]]*\]/m.exec(rest)
+  const sectionEnd =
+    nextHeaderMatch === null
+      ? content.length
+      : sectionStart + nextHeaderMatch.index
+
+  const section = content.slice(sectionStart, sectionEnd)
+  const versionRegex = /^version[ \t]*=[ \t]*(["'])([^"']*)\1/dm
+  const versionMatch = versionRegex.exec(section)
+  if (!versionMatch?.indices) {
+    return null
+  }
+
+  const [valueStart, valueEnd] = versionMatch.indices[2]
+  const absoluteStart = sectionStart + valueStart
+  const absoluteEnd = sectionStart + valueEnd
+
+  return (
+    content.slice(0, absoluteStart) + newVersion + content.slice(absoluteEnd)
+  )
 }
 
 /**
@@ -150,6 +208,11 @@ export class GitHubService {
 
     // Update package versions and changelogs locally
     const files: git.CommitFileEntry[] = []
+    // Directories whose Cargo.toml just changed -- used below to find and
+    // refresh any Cargo.lock (standalone crate, or a shared workspace lock
+    // at the repo root) so consumers no longer need a separate workflow to
+    // keep it in sync after a version bump.
+    const changedCargoTomlDirs = new Set<string>()
     for (const change of changes) {
       await this.updatePackageVersion(change.path, change.newVersion)
 
@@ -162,6 +225,9 @@ export class GitHubService {
         if (fs.existsSync(filePath)) {
           const content = fs.readFileSync(filePath, 'utf-8')
           files.push({ path: filePath, content })
+          if (filePath.endsWith('Cargo.toml')) {
+            changedCargoTomlDirs.add(change.path)
+          }
         }
       }
 
@@ -214,12 +280,37 @@ export class GitHubService {
       JSON.stringify(manifest, null, 2).replace(/ {2}/g, indent) + '\n'
     files.push({ path: manifestPath, content: formattedManifestJSON })
 
+    // Refresh Cargo.lock wherever a changed Cargo.toml's version bump would
+    // leave it stale: the crate's own directory (a standalone crate with
+    // its own lockfile) and the repo root (a shared workspace lockfile),
+    // whichever of those actually have a Cargo.lock. `cargo update
+    // --workspace` is the standard way to resync a lockfile's own-package
+    // version entries after a manual Cargo.toml edit -- Cargo.lock embeds
+    // resolved checksums/dependency-graph data that can't be hand-patched
+    // the way Cargo.toml's `version` field can.
+    const cargoLockDirs = new Set<string>()
+    if (changedCargoTomlDirs.size > 0) {
+      for (const dir of ['.', ...changedCargoTomlDirs]) {
+        if (fs.existsSync(path.join(dir, 'Cargo.lock'))) {
+          cargoLockDirs.add(dir)
+        }
+      }
+    }
+    const postWriteCommands: git.CommitPostWriteCommand[] = [
+      ...cargoLockDirs
+    ].map((cwd) => ({
+      cwd,
+      file: 'cargo' as const,
+      args: ['update', '--workspace']
+    }))
+
     // Commit the files to the release branch (creates or force-updates it)
     git.commitFilesToBranch({
       branch: branchName,
       baseRef: 'origin/main',
       message: commitMessage,
       files,
+      postWriteCommands,
       userName: core.getInput('git-user-name'),
       userEmail: core.getInput('git-user-email')
     })
@@ -725,20 +816,22 @@ export class GitHubService {
         JSON.stringify(packageJson, null, 2).replace(/ {2}/g, indent) + '\n'
       fs.writeFileSync(packageJsonPath, formattedJSON)
     } else if (fs.existsSync(cargoTomlPath)) {
-      const cargoToml = toml.parse(fs.readFileSync(cargoTomlPath, 'utf-8'))
-      if (cargoToml.package) {
-        ;(cargoToml.package as unknown as { version: string }).version =
-          newVersion
-        fs.writeFileSync(cargoTomlPath, toml.stringify(cargoToml))
+      const updated = replaceTomlVersion(
+        fs.readFileSync(cargoTomlPath, 'utf-8'),
+        'package',
+        newVersion
+      )
+      if (updated !== null) {
+        fs.writeFileSync(cargoTomlPath, updated)
       }
     } else if (fs.existsSync(pyprojectTomlPath)) {
-      const pyprojectToml = toml.parse(
-        fs.readFileSync(pyprojectTomlPath, 'utf-8')
+      const updated = replaceTomlVersion(
+        fs.readFileSync(pyprojectTomlPath, 'utf-8'),
+        'project',
+        newVersion
       )
-      if (pyprojectToml.project) {
-        ;(pyprojectToml.project as unknown as { version: string }).version =
-          newVersion
-        fs.writeFileSync(pyprojectTomlPath, toml.stringify(pyprojectToml))
+      if (updated !== null) {
+        fs.writeFileSync(pyprojectTomlPath, updated)
       }
     } else if (fs.existsSync(versionTxtPath)) {
       // For version.txt, we just write the version number directly

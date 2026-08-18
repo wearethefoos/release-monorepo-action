@@ -747,14 +747,13 @@ describe('commitFilesToBranch', () => {
       '## 1.2.0\n- feat: x'
     )
 
-    // Explicit add of exactly the written paths, after --.
+    // -A rather than an explicit path list, so postWriteCommands' own file
+    // changes (e.g. cargo update refreshing Cargo.lock) are picked up too.
     expect(mockExec).toHaveBeenNthCalledWith(2, 'git', [
       '-C',
       worktreeDir,
       'add',
-      '--',
-      'package.json',
-      'packages/foo/CHANGELOG.md'
+      '-A'
     ])
 
     // Commit with per-command identity; the multiline message with
@@ -807,6 +806,62 @@ describe('commitFilesToBranch', () => {
       recursive: true,
       force: true
     })
+  })
+
+  it('runs postWriteCommands after writing files and before git add', () => {
+    mockExec.mockImplementation((_file, args) =>
+      args.includes('rev-parse') ? ok('newsha123\n') : ok('')
+    )
+
+    git.commitFilesToBranch({
+      ...options,
+      postWriteCommands: [
+        { cwd: '.', file: 'cargo', args: ['update', '--workspace'] },
+        {
+          cwd: 'packages/foo',
+          file: 'cargo',
+          args: ['update', '--workspace']
+        }
+      ]
+    })
+
+    // Runs between the file writes (no exec calls of their own) and `git
+    // add`, which is call #2 in the base sequence -- so cargo takes #2/#3
+    // and `git add -A` shifts to #4.
+    expect(mockExec).toHaveBeenNthCalledWith(
+      2,
+      'cargo',
+      ['update', '--workspace'],
+      { cwd: worktreeDir }
+    )
+    expect(mockExec).toHaveBeenNthCalledWith(
+      3,
+      'cargo',
+      ['update', '--workspace'],
+      { cwd: `${worktreeDir}/packages/foo` }
+    )
+    expect(mockExec).toHaveBeenNthCalledWith(4, 'git', [
+      '-C',
+      worktreeDir,
+      'add',
+      '-A'
+    ])
+  })
+
+  it('refuses a postWriteCommand cwd that escapes the worktree', () => {
+    expect(() =>
+      git.commitFilesToBranch({
+        ...options,
+        postWriteCommands: [
+          { cwd: '../../etc', file: 'cargo', args: ['update'] }
+        ]
+      })
+    ).toThrow(/Refusing to run a post-write command outside the worktree/)
+
+    // Still cleaned up despite the guard throwing.
+    expect(mockExec.mock.calls.some((call) => call[1].includes('remove'))).toBe(
+      true
+    )
   })
 
   it('removes the worktree and temp dir even when a git step throws', () => {

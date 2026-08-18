@@ -26,6 +26,17 @@ following file types:
 The action will automatically detect which file type exists in each package
 directory and update it accordingly.
 
+Cargo.toml and pyproject.toml are updated with a targeted edit of just the
+`version` field's value, not a full parse/reformat, so comments, key order, and
+existing formatting are left exactly as they were - no separate formatting step
+is needed afterward. If a changed package has a Cargo.lock (either its own, for
+a standalone crate, or a shared one at the repository root, for a Cargo
+workspace), it's refreshed via `cargo update --workspace` as part of the same
+release commit, so it never goes stale relative to the bumped Cargo.toml
+version. This requires `cargo` to be available on the runner (and any private
+registry authentication your workspace needs to already be configured) whenever
+the repository contains Cargo.toml packages.
+
 ## Inputs
 
 | Input                     | Description                                                                                                                                                                                                                                                                                       | Required | Default                                         |
@@ -87,7 +98,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -112,7 +123,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -137,11 +148,17 @@ permissions:
 ## Requirements
 
 - **Git history**: The workflow must use `fetch-depth: 0` in
-  `actions/checkout@v4` to fetch the full Git history, which is necessary for
+  `actions/checkout@v6` to fetch the full Git history, which is necessary for
   analyzing commits and managing tags locally.
 - **gh CLI**: The GitHub CLI is pre-installed and pre-authenticated on all
   GitHub-hosted runners via the `GH_TOKEN` environment variable, which is
   automatically set from the `token` input.
+- **cargo**: Only needed if the repository contains Cargo.toml packages - used
+  to refresh Cargo.lock after a version bump (see
+  [Supported Package Formats](#supported-package-formats)). Not pre-installed on
+  standard GitHub-hosted runners; add a Rust toolchain setup step (and any
+  private registry authentication your workspace needs) before this action if
+  you release Rust packages.
 
 ## How It Works
 

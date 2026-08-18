@@ -1056,6 +1056,110 @@ describe('GitHubService', () => {
         ) + '\n'
       )
     })
+
+    // Regression coverage for the separate "format Cargo.toml & sync
+    // Cargo.lock" workaround workflow this replaces: a version-only
+    // Cargo.toml edit leaves Cargo.lock's own entry for that package
+    // stale, so it must be refreshed as part of the same release commit.
+    describe('Cargo.lock sync', () => {
+      const cargoTomlPath = 'packages/core/Cargo.toml'
+      const cargoLockPath = 'packages/core/Cargo.lock'
+      const rootCargoLockPath = 'Cargo.lock'
+
+      function mockFsForCargo(options: {
+        standaloneLock?: boolean
+        workspaceLock?: boolean
+      }): void {
+        vi.mocked(fs.existsSync).mockImplementation((p) => {
+          if (p === cargoTomlPath) return true
+          if (p === changelogPath) return true
+          if (p === manifestPath) return true
+          if (p === cargoLockPath) return Boolean(options.standaloneLock)
+          if (p === rootCargoLockPath) return Boolean(options.workspaceLock)
+          return false
+        })
+        vi.mocked(fs.readFileSync).mockImplementation((p) => {
+          if (p === cargoTomlPath) {
+            return '[package]\nname = "core"\nversion = "1.0.0"\n'
+          }
+          if (p === changelogPath) return '## 1.0.0\n\n- Initial release\n'
+          if (p === manifestPath) {
+            return JSON.stringify({
+              'packages/core': { latest: '1.0.0', main: '1.0.0' }
+            })
+          }
+          return ''
+        })
+      }
+
+      beforeEach(() => {
+        mockGh.listOpenPullRequests.mockReturnValue([])
+        mockGh.createPullRequest.mockReturnValue(456)
+      })
+
+      it("refreshes a standalone crate's own Cargo.lock", async () => {
+        mockFsForCargo({ standaloneLock: true })
+
+        await githubService.createReleasePullRequest(changes, 'release-me')
+
+        const call = mockGit.commitFilesToBranch.mock.calls[0][0]
+        expect(call.postWriteCommands).toEqual([
+          {
+            cwd: 'packages/core',
+            file: 'cargo',
+            args: ['update', '--workspace']
+          }
+        ])
+      })
+
+      it('refreshes a shared workspace Cargo.lock at the repo root', async () => {
+        mockFsForCargo({ workspaceLock: true })
+
+        await githubService.createReleasePullRequest(changes, 'release-me')
+
+        const call = mockGit.commitFilesToBranch.mock.calls[0][0]
+        expect(call.postWriteCommands).toEqual([
+          { cwd: '.', file: 'cargo', args: ['update', '--workspace'] }
+        ])
+      })
+
+      it('refreshes both when a crate has its own lock and a workspace lock also exists', async () => {
+        mockFsForCargo({ standaloneLock: true, workspaceLock: true })
+
+        await githubService.createReleasePullRequest(changes, 'release-me')
+
+        const call = mockGit.commitFilesToBranch.mock.calls[0][0]
+        expect(call.postWriteCommands).toHaveLength(2)
+        expect(call.postWriteCommands).toEqual(
+          expect.arrayContaining([
+            { cwd: '.', file: 'cargo', args: ['update', '--workspace'] },
+            {
+              cwd: 'packages/core',
+              file: 'cargo',
+              args: ['update', '--workspace']
+            }
+          ])
+        )
+      })
+
+      it('does not run cargo when no Cargo.lock exists anywhere', async () => {
+        mockFsForCargo({})
+
+        await githubService.createReleasePullRequest(changes, 'release-me')
+
+        const call = mockGit.commitFilesToBranch.mock.calls[0][0]
+        expect(call.postWriteCommands).toEqual([])
+      })
+
+      it('does not run cargo when the changed package has no Cargo.toml', async () => {
+        mockFsForCore()
+
+        await githubService.createReleasePullRequest(changes, 'release-me')
+
+        const call = mockGit.commitFilesToBranch.mock.calls[0][0]
+        expect(call.postWriteCommands).toEqual([])
+      })
+    })
   })
 
   describe('createVersionBumpPullRequest', () => {
@@ -1203,6 +1307,44 @@ describe('GitHubService', () => {
         cargoTomlPath,
         expect.stringContaining(`version = "${newVersion}"`)
       )
+    })
+
+    // Regression coverage: the old @iarna/toml parse+stringify round trip
+    // reformatted the whole file (reordering keys, dropping comments,
+    // normalizing whitespace), forcing consumers to run a separate
+    // formatter (e.g. `taplo fmt`) after every release PR. The targeted
+    // replacement must touch only the version field's characters.
+    it('preserves Cargo.toml comments, key order, and formatting untouched', async () => {
+      const packagePath = 'packages/core'
+      const newVersion = '1.0.0'
+      const cargoTomlPath = path.join(packagePath, 'Cargo.toml')
+      const cargoToml =
+        '# top-of-file comment\n[package]\nname = "core"\nversion = "0.1.0" # keep at latest\nedition = "2024"\n\n[dependencies]\nserde = { version = "1.0", features = ["derive"] }\n'
+
+      vi.mocked(fs.existsSync).mockImplementation((p) => p === cargoTomlPath)
+      vi.mocked(fs.readFileSync).mockReturnValue(cargoToml)
+      vi.mocked(fs.writeFileSync).mockImplementation(() => {})
+
+      await githubService.updatePackageVersion(packagePath, newVersion)
+
+      const expected =
+        '# top-of-file comment\n[package]\nname = "core"\nversion = "1.0.0" # keep at latest\nedition = "2024"\n\n[dependencies]\nserde = { version = "1.0", features = ["derive"] }\n'
+      expect(fs.writeFileSync).toHaveBeenCalledWith(cargoTomlPath, expected)
+    })
+
+    it('leaves a Cargo.toml with no [package] table untouched (e.g. a pure workspace root)', async () => {
+      const packagePath = '.'
+      const newVersion = '1.0.0'
+      const cargoTomlPath = path.join(packagePath, 'Cargo.toml')
+      const cargoToml = '[workspace]\nmembers = ["packages/*"]\n'
+
+      vi.mocked(fs.existsSync).mockImplementation((p) => p === cargoTomlPath)
+      vi.mocked(fs.readFileSync).mockReturnValue(cargoToml)
+      vi.mocked(fs.writeFileSync).mockImplementation(() => {})
+
+      await githubService.updatePackageVersion(packagePath, newVersion)
+
+      expect(fs.writeFileSync).not.toHaveBeenCalled()
     })
 
     it('should update pyproject.toml version', async () => {

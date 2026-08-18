@@ -2,9 +2,9 @@ import { execFileSync } from 'child_process'
 
 /**
  * The single subprocess touchpoint for this codebase. This is the ONLY file
- * allowed to import `child_process`. Every git/gh invocation elsewhere MUST
- * go through `execCommand()` below, passing arguments as a discrete argv
- * array (never as an interpolated shell string, and never with
+ * allowed to import `child_process`. Every git/gh/cargo invocation elsewhere
+ * MUST go through `execCommand()` below, passing arguments as a discrete
+ * argv array (never as an interpolated shell string, and never with
  * `shell: true`). Commit messages, PR titles, branch/tag names and
  * changelog bodies all derive from untrusted commit/PR text and can contain
  * shell metacharacters (backticks, `$()`, quotes, newlines) — string-
@@ -50,15 +50,15 @@ export class ExecError extends Error {
 }
 
 /**
- * Runs `file` (either 'git' or 'gh') with `args` as an argv array via
- * `execFileSync` — never a shell string, never `shell: true`.
+ * Runs `file` (one of 'git', 'gh', or 'cargo') with `args` as an argv array
+ * via `execFileSync` — never a shell string, never `shell: true`.
  *
  * On non-zero exit, throws an `ExecError` unless `options.allowNonZeroExit`
  * is true, in which case the result is returned with the real `exitCode`
  * (used for existence probes like `git ls-remote` / `git rev-parse`).
  */
 export function execCommand(
-  file: 'git' | 'gh',
+  file: 'git' | 'gh' | 'cargo',
   args: string[],
   options: ExecOptions = {}
 ): ExecResult {

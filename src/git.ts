@@ -35,6 +35,19 @@ export interface CommitFileEntry {
 }
 
 /**
+ * A command run inside the worktree, after `files` are written but before
+ * the commit, whose own file changes (e.g. `cargo update --workspace`
+ * refreshing `Cargo.lock`) are picked up alongside `files` automatically --
+ * see the `git add -A` note in `commitFilesToBranch` below.
+ */
+export interface CommitPostWriteCommand {
+  /** Directory the command runs in, relative to the worktree root. */
+  cwd: string
+  file: 'cargo'
+  args: string[]
+}
+
+/**
  * Guards a value that will be passed to git in a position where git does
  * not support an end-of-options `--` separator and the value is not
  * neutralized by a literal prefix. Git itself refuses ref names starting
@@ -379,21 +392,30 @@ export function getLastCommitDiffForFile(
 
 /**
  * Creates (or force-updates) `branch` on origin with a single commit on top
- * of `baseRef` containing exactly `files`, replacing the old Git Data API
- * blob/tree/commit/ref dance. Uses a temporary detached worktree so the
- * runner's checked-out tree stays pristine, and force-pushes to replicate
- * the old `updateRef({ force: true })` upsert semantics. Returns the new
- * commit SHA.
+ * of `baseRef` containing `files` plus whatever `postWriteCommands` (if any)
+ * change on top of them, replacing the old Git Data API blob/tree/commit/ref
+ * dance. Uses a temporary detached worktree so the runner's checked-out tree
+ * stays pristine, and force-pushes to replicate the old
+ * `updateRef({ force: true })` upsert semantics. Returns the new commit SHA.
  */
 export function commitFilesToBranch(options: {
   branch: string
   baseRef: string
   message: string
   files: CommitFileEntry[]
+  postWriteCommands?: CommitPostWriteCommand[]
   userName: string
   userEmail: string
 }): string {
-  const { branch, baseRef, message, files, userName, userEmail } = options
+  const {
+    branch,
+    baseRef,
+    message,
+    files,
+    postWriteCommands = [],
+    userName,
+    userEmail
+  } = options
   assertSafePositional(baseRef, 'base ref')
 
   const worktreeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-action-'))
@@ -412,13 +434,22 @@ export function commitFilesToBranch(options: {
       fs.writeFileSync(target, file.content)
     }
 
-    execCommand('git', [
-      '-C',
-      worktreeDir,
-      'add',
-      '--',
-      ...files.map((file) => file.path)
-    ])
+    for (const command of postWriteCommands) {
+      const cwd = path.resolve(worktreeDir, command.cwd)
+      if (cwd !== worktreeDir && !cwd.startsWith(worktreeDir + path.sep)) {
+        throw new Error(
+          `Refusing to run a post-write command outside the worktree: ${command.cwd}`
+        )
+      }
+      execCommand(command.file, command.args, { cwd })
+    }
+
+    // `-A` rather than the explicit `files` list: postWriteCommands (e.g.
+    // `cargo update --workspace` refreshing Cargo.lock) can touch files
+    // beyond the ones we wrote ourselves, and the worktree only ever
+    // contains a clean checkout of `baseRef` plus those changes, so this
+    // stays precisely scoped to what actually changed.
+    execCommand('git', ['-C', worktreeDir, 'add', '-A'])
 
     const commitArgs = [
       '-C',
