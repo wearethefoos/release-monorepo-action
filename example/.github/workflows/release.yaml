@@ -3,7 +3,10 @@ on:
   push:
   workflow_dispatch:
 
-permissions: read-all
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
 
 jobs:
   release:

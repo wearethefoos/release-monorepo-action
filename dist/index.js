@@ -31611,13 +31611,27 @@ function tagExists(tagName) {
  * the old Octokit `createRef({ force: true })` upsert) -- used only when
  * the `overwrite-existing-tags` input opts into clobbering a pre-existing
  * tag; the default path never passes `force`.
+ *
+ * An annotated tag is itself a git object with its own "tagger" field
+ * (like a commit's author/committer), so it fails with "empty ident
+ * name"/"Committer identity unknown" on a runner with no git identity
+ * configured -- exactly like `commitFilesToBranch`'s commit step would
+ * without its own `-c user.name`/`-c user.email`. `userName`/`userEmail`
+ * (the `git-user-name`/`git-user-email` action inputs) are applied the same
+ * way here, scoped to just this command.
  */
-function createAnnotatedTag(tagName, message, sha, force = false) {
+function createAnnotatedTag(tagName, message, sha, userName, userEmail, force = false) {
     // `-m` before `--` so the untrusted tag name and sha can never be read as
     // options; the multiline message is a single argv element.
+    const identityArgs = [
+        '-c',
+        `user.name=${userName}`,
+        '-c',
+        `user.email=${userEmail}`
+    ];
     const args = force
-        ? ['tag', '-f', '-a', '-m', message, '--', tagName, sha]
-        : ['tag', '-a', '-m', message, '--', tagName, sha];
+        ? [...identityArgs, 'tag', '-f', '-a', '-m', message, '--', tagName, sha]
+        : [...identityArgs, 'tag', '-a', '-m', message, '--', tagName, sha];
     execCommand('git', args);
 }
 /**
@@ -32427,12 +32441,12 @@ class GitHubService {
                         `force-moving existing tags to the current commit.`);
                 }
                 info(`Tag ${tagName} already exists; overwriting it to point at ${this.releaseContext.sha} (overwrite-existing-tags is enabled)`);
-                createAnnotatedTag(tagName, change.changelog || releaseName, this.releaseContext.sha, true);
+                createAnnotatedTag(tagName, change.changelog || releaseName, this.releaseContext.sha, getInput('git-user-name'), getInput('git-user-email'), true);
                 pushTag(tagName, true);
             }
             else {
                 info(`Creating release ${releaseName}`);
-                createAnnotatedTag(tagName, change.changelog || releaseName, this.releaseContext.sha);
+                createAnnotatedTag(tagName, change.changelog || releaseName, this.releaseContext.sha, getInput('git-user-name'), getInput('git-user-email'));
                 pushTag(tagName);
             }
             versions.push({

@@ -8,10 +8,45 @@ accordingly.
 
 - Automatically determines version bumps based on conventional commit messages
 - Supports prereleases from pull requests
-- Creates GitHub releases with changelogs
+- Creates annotated Git release tags with changelogs (no GitHub Releases
+  objects - see [Upgrading to v3](#upgrading-to-v3-breaking-changes))
 - Updates package versions in manifest files
 - Handles multiple packages in a monorepo setup
 - Tag pull requests to create prereleases
+
+## Upgrading to v3 (Breaking Changes)
+
+Starting with v3, this action does almost all of its work with local `git` and
+the `gh` CLI instead of the GitHub REST API, so it depends on far fewer npm
+packages. This changes what your workflow needs to provide, and changes one
+user-visible behavior:
+
+- **`fetch-depth: 0` is now required, not just recommended.** Version bumps,
+  changelogs, and tag lookups are computed from the local clone's commit history
+  and tags. With the default shallow checkout (`fetch-depth: 1`, the
+  `actions/checkout` default), this action will compute wrong version bumps or
+  miss existing release tags entirely, some of which fail silently rather than
+  erroring. See [Requirements](#requirements) below.
+- **GitHub Releases are no longer created.** Releases are now plain annotated
+  Git tags (`git tag -a`, with the changelog as the tag message) pushed straight
+  to the repository - there's no more entry on the repository's "Releases" page
+  or `GET /repos/{owner}/{repo}/releases` response. If any of your own tooling
+  reads GitHub Releases (not tags) for this repository, point it at tags instead
+  (e.g. `git tag -l` or `gh api repos/{owner}/{repo}/tags`).
+- **New `issues: write` permission is required**, in addition to the
+  `contents: write` and `pull-requests: write` this action already needed - see
+  [Workflow Permissions](#workflow-permissions).
+- **New `overwrite-existing-tags` input**, currently defaulting to `true` to
+  match this action's pre-v3 behavior, but that default is deprecated and will
+  change to `false` in a future release. Set it explicitly now (either way) so a
+  future upgrade doesn't silently change what happens on a tag collision - see
+  [Inputs](#inputs).
+- **`cargo` is required on the runner if your repository has Cargo.toml
+  packages** (to keep Cargo.lock in sync after a version bump - see
+  [Supported Package Formats](#supported-package-formats)); **`gh` is required**
+  for pull request, label, and comment operations, but it's pre-installed and
+  pre-authenticated on GitHub-hosted runners already, so most workflows need no
+  changes for this one - see [Requirements](#requirements).
 
 ## Supported Package Formats
 
@@ -143,6 +178,7 @@ This action requires the following permissions in your workflow:
 permissions:
   contents: write # For creating commits, tags, and pushing to main
   pull-requests: write # For creating and updating release PRs, adding labels, and posting comments
+  issues: write # For adding labels to the PR (the labels API is an Issues-scoped endpoint even for PRs)
 ```
 
 ## Requirements

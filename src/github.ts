@@ -504,6 +504,8 @@ export class GitHubService {
           tagName,
           change.changelog || releaseName,
           this.releaseContext.sha,
+          core.getInput('git-user-name'),
+          core.getInput('git-user-email'),
           true
         )
         git.pushTag(tagName, true)
@@ -512,7 +514,9 @@ export class GitHubService {
         git.createAnnotatedTag(
           tagName,
           change.changelog || releaseName,
-          this.releaseContext.sha
+          this.releaseContext.sha,
+          core.getInput('git-user-name'),
+          core.getInput('git-user-email')
         )
         git.pushTag(tagName)
       }

@@ -553,7 +553,9 @@ describe('GitHubService', () => {
       expect(mockGit.createAnnotatedTag).toHaveBeenCalledWith(
         'v1.0.0',
         '## Changes\n\n- feat(core): add feature',
-        'test-sha'
+        'test-sha',
+        'github-actions[bot]',
+        'actions@github.com'
       )
       expect(mockGit.pushTag).toHaveBeenCalledWith('v1.0.0')
       expect(core.setOutput).toHaveBeenCalledWith('version', '1.0.0')
@@ -595,12 +597,16 @@ describe('GitHubService', () => {
       expect(mockGit.createAnnotatedTag).toHaveBeenCalledWith(
         'core-v1.0.0',
         '## Changes\n\n- feat(core): add feature',
-        'test-sha'
+        'test-sha',
+        'github-actions[bot]',
+        'actions@github.com'
       )
       expect(mockGit.createAnnotatedTag).toHaveBeenCalledWith(
         'utils-v2.0.0',
         '## Changes\n\n- feat(utils): add utility',
-        'test-sha'
+        'test-sha',
+        'github-actions[bot]',
+        'actions@github.com'
       )
       expect(mockGit.pushTag).toHaveBeenCalledWith('core-v1.0.0')
       expect(mockGit.pushTag).toHaveBeenCalledWith('utils-v2.0.0')
@@ -676,6 +682,8 @@ describe('GitHubService', () => {
         'v1.0.0',
         '## Changes',
         'test-sha',
+        'github-actions[bot]',
+        'actions@github.com',
         true
       )
       expect(mockGit.pushTag).toHaveBeenCalledWith('v1.0.0', true)
@@ -705,6 +713,8 @@ describe('GitHubService', () => {
         'v1.0.0',
         '## Changes',
         'test-sha',
+        'github-actions[bot]',
+        'actions@github.com',
         true
       )
       expect(mockGit.pushTag).toHaveBeenCalledWith('v1.0.0', true)
@@ -741,7 +751,9 @@ describe('GitHubService', () => {
       expect(mockGit.createAnnotatedTag).toHaveBeenCalledWith(
         'v1.0.0',
         '## Changes',
-        'test-sha'
+        'test-sha',
+        'github-actions[bot]',
+        'actions@github.com'
       )
       expect(mockGit.pushTag).toHaveBeenCalledWith('v1.0.0')
     })
@@ -768,7 +780,9 @@ describe('GitHubService', () => {
       expect(mockGit.createAnnotatedTag).toHaveBeenCalledWith(
         'core-v1.1.0-rc.1',
         '## Changes',
-        'test-sha'
+        'test-sha',
+        'github-actions[bot]',
+        'actions@github.com'
       )
       expect(core.setOutput).toHaveBeenCalledWith('prerelease', true)
     })
