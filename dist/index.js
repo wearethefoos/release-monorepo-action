@@ -31449,40 +31449,110 @@ function configureGitAuth(token) {
     gitAuthToken = token;
 }
 /**
- * Builds an env override that authenticates a single git push with the
- * configured token, via the `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/
- * `GIT_CONFIG_VALUE_n` env-var mechanism (git >= 2.31) rather than a
- * `-c http.extraheader=...` argv element -- this keeps the base64-encoded
- * token out of argv (and therefore out of `ps` output) the same way gh.ts
- * threads GH_TOKEN via env instead of an argv flag. Nothing is written to
- * repo or global git config, so the override is scoped to only the single
- * `execCommand` call it's passed to. Mirrors the header actions/checkout
- * itself sets for the same purpose. Returns undefined when no token has
- * been configured, so callers fall back to ambient (checkout-persisted)
- * credentials.
+ * The exact `http.<url>.extraheader` config key `actions/checkout` (with
+ * the default `persist-credentials: true`) persists its own Authorization
+ * header under, derived the same way checkout itself derives it: from
+ * `GITHUB_SERVER_URL`, defaulting to `https://github.com` (e.g. outside a
+ * real Actions runtime).
  */
-function pushAuthEnv() {
-    if (!gitAuthToken) {
-        return undefined;
-    }
-    const basicAuth = Buffer.from(`x-access-token:${gitAuthToken}`).toString('base64');
-    return {
-        ...process.env,
-        GIT_CONFIG_COUNT: '1',
-        GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
-        GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${basicAuth}`
-    };
+function checkoutExtraHeaderKey() {
+    const serverUrl = process.env.GITHUB_SERVER_URL ?? 'https://github.com';
+    return `http.${serverUrl}/.extraheader`;
 }
-/** Runs a `git push` with the token-based auth override applied only when
- * a token has been configured, so untouched (no-token) call sites keep
- * behaving exactly as before. */
-function execPush(args) {
-    const authEnv = pushAuthEnv();
-    if (authEnv) {
-        execCommand('git', args, { env: authEnv });
+/**
+ * Finds every currently-configured value for `key`, and which literal FILE
+ * each one lives in, via `git config --show-origin --get-all`. Entries
+ * whose origin isn't a plain file (env/command-line/blob -- not expected
+ * in practice here, but `--show-origin` can report those too) are skipped:
+ * there's no file to edit, so they're left alone rather than guessed at.
+ */
+function findExtraHeaderEntries(key, cwd) {
+    const dirArgs = cwd ? ['-C', cwd] : [];
+    const result = execCommand('git', [...dirArgs, 'config', '--show-origin', '--get-all', key], { allowNonZeroExit: true });
+    if (result.exitCode !== 0) {
+        return [];
     }
-    else {
+    const entries = [];
+    for (const line of result.stdout.split('\n')) {
+        if (!line)
+            continue;
+        const tabIndex = line.indexOf('\t');
+        if (tabIndex === -1 || !line.startsWith('file:'))
+            continue;
+        entries.push({
+            file: line.slice('file:'.length, tabIndex),
+            value: line.slice(tabIndex + 1)
+        });
+    }
+    return entries;
+}
+/**
+ * Runs a `git push` authenticated with the configured token (falling back
+ * to ambient checkout-persisted credentials when no token was configured
+ * via `configureGitAuth`), scoped to just this one push, in the given
+ * `cwd` (the worktree directory for `commitFilesToBranch`'s push, or
+ * undefined for `pushTag`'s push from the runner's own checkout).
+ *
+ * `http.<url>.extraHeader` is a MULTI-VALUED config key: git sends EVERY
+ * applicable value from EVERY config source on the same request -- verified
+ * directly against the real git binary with `GIT_CURL_VERBOSE`. Several
+ * things that look like they should override a config value do NOT, in
+ * practice (`git config --get-urlmatch`/`--get-all` suggested otherwise,
+ * but neither reflects what's actually sent on the wire): an empty-value
+ * "reset" only adds a third, empty entry; a more specific `http.<url>.*`
+ * key does not suppress a less-specific one; and pushing to a URL with
+ * embedded credentials doesn't add a header alongside an existing
+ * extraheader either way, it's genuinely ambiguous which one wins. Direct
+ * removal is the only thing that reliably works.
+ *
+ * The removal itself has a sharper trap: `actions/checkout`
+ * (`persist-credentials: true`, the default) does NOT write its
+ * Authorization extraheader directly into `.git/config`. It writes it to a
+ * SEPARATE temp credentials file, wired in via an `includeIf.gitdir`
+ * directive in `.git/config` (with a second `includeIf.gitdir` entry
+ * specifically for `.git/worktrees/*`, since this worktree has its own
+ * gitdir). `git config --local --get-all`/`--unset-all` only ever operate
+ * on `.git/config` itself -- reads silently return nothing and unsets
+ * silently no-op for a value that only exists via an include, so an
+ * `--unset-all`-based "fix" here is a no-op against real
+ * `actions/checkout` credentials (this shipped once already and still
+ * failed in production). `git config --show-origin` reveals which actual
+ * file a value lives in regardless of whether that's `.git/config` or an
+ * included file, so `findExtraHeaderEntries` resolves that first, and this
+ * function edits each entry's OWN file directly via `git config --file
+ * <that file>`. All of this -- multi-file capture, per-file unset, the
+ * single-header push, and per-file restore -- was verified end-to-end
+ * against the real git binary with `GIT_CURL_VERBOSE`, replicating
+ * checkout's actual includeIf-based credential storage, before shipping.
+ */
+function execPush(args, cwd) {
+    if (!gitAuthToken) {
         execCommand('git', args);
+        return;
+    }
+    const key = checkoutExtraHeaderKey();
+    const existing = findExtraHeaderEntries(key, cwd);
+    const files = [...new Set(existing.map((entry) => entry.file))];
+    for (const file of files) {
+        execCommand('git', ['config', '--file', file, '--unset-all', key], {
+            allowNonZeroExit: true
+        });
+    }
+    try {
+        const basicAuth = Buffer.from(`x-access-token:${gitAuthToken}`).toString('base64');
+        execCommand('git', args, {
+            env: {
+                ...process.env,
+                GIT_CONFIG_COUNT: '1',
+                GIT_CONFIG_KEY_0: key,
+                GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${basicAuth}`
+            }
+        });
+    }
+    finally {
+        for (const entry of existing) {
+            execCommand('git', ['config', '--file', entry.file, '--add', key, entry.value], { allowNonZeroExit: true });
+        }
     }
 }
 /**
@@ -31795,7 +31865,7 @@ function commitFilesToBranch(options) {
                 '--force',
                 'origin',
                 `HEAD:refs/heads/${branch}`
-            ]);
+            ], worktreeDir);
         }
         return execCommand('git', [
             '-C',
