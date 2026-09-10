@@ -1,5 +1,40 @@
 # Changelog
 
+## [3.0.0](https://github.com/wearethefoos/release-monorepo-action/compare/v2.0.0...v3.0.0) (2026-09-10)
+
+### 🚀 Features
+
+- **BREAKING CHANGE:** leverage git where possible and depend less on github APIs (#117)
+
+### 🐛 Fixes
+
+- address git identity context issues (#118)
+- prevent dupe headers being sent from pushAuthEnv (#119)
+
+## [3.0.0](https://github.com/wearethefoos/release-monorepo-action/compare/v2.0.0...v3.0.0) (2026-09-10)
+
+### 🚀 Features
+
+- **BREAKING CHANGE:** leverage git where possible and depend less on github
+  APIs (#117)
+
+### 🐛 Fixes
+
+- address git identity context issues (#118)
+- prevent dupe headers being sent from pushAuthEnv (#119)
+
+## [3.0.0](https://github.com/wearethefoos/release-monorepo-action/compare/v2.0.0...v3.0.0) (2026-09-10)
+
+### 🚀 Features
+
+- **BREAKING CHANGE:** leverage git where possible and depend less on github
+  APIs (#117)
+
+### 🐛 Fixes
+
+- address git identity context issues (#118)
+- prevent dupe headers being sent from pushAuthEnv (#119)
+
 ## [2.0.0](https://github.com/wearethefoos/release-monorepo-action/compare/v1.2.0...v2.0.0) (2026-04-16)
 
 ### 🚀 Features
