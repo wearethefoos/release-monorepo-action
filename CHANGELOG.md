@@ -4,7 +4,8 @@
 
 ### 🚀 Features
 
-- **BREAKING CHANGE:** leverage git where possible and depend less on github APIs (#117)
+- **BREAKING CHANGE:** leverage git where possible and depend less on github
+  APIs (#117)
 
 ### 🐛 Fixes
 
