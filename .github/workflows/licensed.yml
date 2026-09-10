@@ -28,7 +28,7 @@ jobs:
       # zizmor: ignore[artipacked] - needs credentials to push license updates
       - name: Checkout
         id: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         id: setup-pnpm
