@@ -878,6 +878,38 @@ describe('GitHubService', () => {
       )
     })
 
+    it('replaces an already-present section for the new version instead of duplicating it', async () => {
+      // Simulates re-running against a checkout that already has this
+      // version's section committed (e.g. the release PR itself
+      // re-triggering the workflow), which previously kept appending a new
+      // copy of the section on every run.
+      const existingSection =
+        '## [1.1.0](https://github.com/test-owner/test-repo/compare/core-v1.0.0...core-v1.1.0) (2020-01-01)\n\n## Changes\n\n- feat(core): add feature\n\n'
+      vi.mocked(fs.readFileSync).mockImplementation((p) => {
+        if (p === packageJsonPath)
+          return JSON.stringify({ name: 'core', version: '1.0.0' })
+        if (p === changelogPath)
+          return `## 1.0.0\n\n- Initial release\n\n${existingSection}`
+        if (p === manifestPath)
+          return JSON.stringify({
+            'packages/core': { latest: '1.0.0', main: '1.0.0' }
+          })
+        return ''
+      })
+      mockGh.listOpenPullRequests.mockReturnValue([])
+      mockGh.createPullRequest.mockReturnValue(456)
+
+      await githubService.createReleasePullRequest(changes, 'release-me')
+
+      const call = mockGit.commitFilesToBranch.mock.calls[0][0]
+      const changelogFile = call.files.find(
+        (f: { path: string }) => f.path === changelogPath
+      )
+      const occurrences = (changelogFile.content.match(/## \[1\.1\.0\]/g) ?? [])
+        .length
+      expect(occurrences).toBe(1)
+    })
+
     it('updates an existing open PR', async () => {
       mockGh.listOpenPullRequests.mockReturnValue([
         mockPr({
