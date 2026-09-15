@@ -8,8 +8,9 @@ accordingly.
 
 - Automatically determines version bumps based on conventional commit messages
 - Supports prereleases from pull requests
-- Creates annotated Git release tags with changelogs (no GitHub Releases
-  objects - see [Upgrading to v3](#upgrading-to-v3-breaking-changes))
+- Creates annotated Git release tags with changelogs as the source of truth,
+  then best-effort creates a matching GitHub Release on top (see
+  [Upgrading to v3](#upgrading-to-v3-breaking-changes))
 - Updates package versions in manifest files
 - Handles multiple packages in a monorepo setup
 - Tag pull requests to create prereleases
@@ -27,12 +28,16 @@ user-visible behavior:
   `actions/checkout` default), this action will compute wrong version bumps or
   miss existing release tags entirely, some of which fail silently rather than
   erroring. See [Requirements](#requirements) below.
-- **GitHub Releases are no longer created.** Releases are now plain annotated
-  Git tags (`git tag -a`, with the changelog as the tag message) pushed straight
-  to the repository - there's no more entry on the repository's "Releases" page
-  or `GET /repos/{owner}/{repo}/releases` response. If any of your own tooling
-  reads GitHub Releases (not tags) for this repository, point it at tags instead
-  (e.g. `git tag -l` or `gh api repos/{owner}/{repo}/tags`).
+- **The Git tag, not the GitHub Release, is now the source of truth for a
+  release.** This action first creates and pushes an annotated Git tag
+  (`git tag -a`, with the changelog as the tag message) - that step never
+  depends on the GitHub API. It then best-effort creates a matching GitHub
+  Release on top via `gh release create`; if that call fails (rate limit,
+  missing permissions, a release already existing for the tag, ...) the action
+  only logs a warning and continues, it never fails the run over it. If your own
+  tooling reads GitHub Releases for this repository and needs to keep working
+  even when that best-effort step doesn't fire, point it at tags instead (e.g.
+  `git tag -l` or `gh api repos/{owner}/{repo}/tags`).
 - **New `issues: write` permission is required**, in addition to the
   `contents: write` and `pull-requests: write` this action already needed - see
   [Workflow Permissions](#workflow-permissions).

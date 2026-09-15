@@ -54,6 +54,7 @@ vi.mock('./gh.js', () => ({
   addLabels: vi.fn(),
   removeLabel: vi.fn(),
   createComment: vi.fn(),
+  createRelease: vi.fn(),
   getMergedPullRequestsForCommit: vi.fn()
 }))
 
@@ -560,6 +561,12 @@ describe('GitHubService', () => {
       expect(mockGit.pushTag).toHaveBeenCalledWith('v1.0.0')
       expect(core.setOutput).toHaveBeenCalledWith('version', '1.0.0')
       expect(core.setOutput).toHaveBeenCalledWith('prerelease', false)
+      expect(mockGh.createRelease).toHaveBeenCalledWith({
+        tagName: 'v1.0.0',
+        name: 'v1.0.0',
+        body: '## Changes\n\n- feat(core): add feature',
+        prerelease: false
+      })
     })
 
     it('creates tags for multiple packages using basename-prefixed names', async () => {
@@ -787,6 +794,68 @@ describe('GitHubService', () => {
       expect(core.setOutput).toHaveBeenCalledWith('prerelease', true)
     })
 
+    // v3 leans on git tags as the source of truth, but a GitHub Release is
+    // still a useful best-effort extra on top -- its failure (rate limit,
+    // permissions, a release already existing for the tag, ...) must never
+    // fail the run, since the tag itself (the part that matters) already
+    // succeeded.
+    it('warns but does not throw when creating the GitHub Release fails', async () => {
+      mockGit.getFileAtRef.mockReturnValue(
+        JSON.stringify({ '.': { latest: '1.0.0', main: '1.0.0' } })
+      )
+      mockGh.createRelease.mockImplementation(() => {
+        throw new Error('release already exists')
+      })
+
+      const changes: PackageChanges[] = [
+        {
+          name: 'root',
+          releaseTarget: 'main',
+          path: '.',
+          currentVersion: '1.0.0',
+          newVersion: '1.1.0',
+          commits: [],
+          changelog: '## Changes'
+        }
+      ]
+
+      await expect(githubService.createRelease(changes)).resolves.not.toThrow()
+
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to create GitHub Release for v1.0.0')
+      )
+      // The tag itself is unaffected, and outputs still reflect success.
+      expect(mockGit.pushTag).toHaveBeenCalledWith('v1.0.0')
+      expect(core.setOutput).toHaveBeenCalledWith('version', '1.0.0')
+    })
+
+    it('marks the GitHub Release as a prerelease for prerelease tags', async () => {
+      mockGit.getFileAtRef.mockReturnValue(
+        JSON.stringify({ 'packages/core': { latest: '1.0.0', main: '1.0.0' } })
+      )
+
+      const changes: PackageChanges[] = [
+        {
+          name: 'core',
+          releaseTarget: 'canary',
+          path: 'packages/core',
+          currentVersion: '1.0.0',
+          newVersion: '1.1.0-rc.1',
+          commits: [],
+          changelog: '## Changes'
+        }
+      ]
+
+      await githubService.createRelease(changes, true)
+
+      expect(mockGh.createRelease).toHaveBeenCalledWith({
+        tagName: 'core-v1.1.0-rc.1',
+        name: 'core v1.1.0-rc.1',
+        body: '## Changes',
+        prerelease: true
+      })
+    })
+
     it('propagates errors from git tag creation', async () => {
       mockGit.getFileAtRef.mockReturnValue(
         JSON.stringify({ '.': { latest: '1.0.0', main: '1.0.0' } })
@@ -876,6 +945,38 @@ describe('GitHubService', () => {
           userEmail: 'actions@github.com'
         })
       )
+    })
+
+    it('replaces an already-present section for the new version instead of duplicating it', async () => {
+      // Simulates re-running against a checkout that already has this
+      // version's section committed (e.g. the release PR itself
+      // re-triggering the workflow), which previously kept appending a new
+      // copy of the section on every run.
+      const existingSection =
+        '## [1.1.0](https://github.com/test-owner/test-repo/compare/core-v1.0.0...core-v1.1.0) (2020-01-01)\n\n## Changes\n\n- feat(core): add feature\n\n'
+      vi.mocked(fs.readFileSync).mockImplementation((p) => {
+        if (p === packageJsonPath)
+          return JSON.stringify({ name: 'core', version: '1.0.0' })
+        if (p === changelogPath)
+          return `## 1.0.0\n\n- Initial release\n\n${existingSection}`
+        if (p === manifestPath)
+          return JSON.stringify({
+            'packages/core': { latest: '1.0.0', main: '1.0.0' }
+          })
+        return ''
+      })
+      mockGh.listOpenPullRequests.mockReturnValue([])
+      mockGh.createPullRequest.mockReturnValue(456)
+
+      await githubService.createReleasePullRequest(changes, 'release-me')
+
+      const call = mockGit.commitFilesToBranch.mock.calls[0][0]
+      const changelogFile = call.files.find(
+        (f: { path: string }) => f.path === changelogPath
+      )
+      const occurrences = (changelogFile.content.match(/## \[1\.1\.0\]/g) ?? [])
+        .length
+      expect(occurrences).toBe(1)
     })
 
     it('updates an existing open PR', async () => {

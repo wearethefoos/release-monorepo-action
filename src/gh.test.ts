@@ -10,6 +10,7 @@ import {
   addLabels,
   removeLabel,
   createComment,
+  createRelease,
   getMergedPullRequestsForCommit
 } from './gh.js'
 
@@ -436,6 +437,58 @@ describe('gh.ts', () => {
       }
       expect(options.input).toBe(DANGEROUS_BODY)
       expectGhToken(options)
+    })
+  })
+
+  describe('createRelease', () => {
+    it('sends the notes via --notes-file - and stdin input, with no --prerelease flag by default', () => {
+      createRelease({
+        tagName: 'v1.0.0',
+        name: 'v1.0.0',
+        body: DANGEROUS_BODY,
+        prerelease: false
+      })
+
+      const { args, options } = lastCall()
+      expect(args).toEqual([
+        'release',
+        'create',
+        'v1.0.0',
+        '-R',
+        'test-owner/test-repo',
+        '--title',
+        'v1.0.0',
+        '--notes-file',
+        '-'
+      ])
+      for (const arg of args) {
+        expect(arg).not.toContain(DANGEROUS_BODY)
+      }
+      expect(options.input).toBe(DANGEROUS_BODY)
+      expectGhToken(options)
+    })
+
+    it('appends --prerelease when prerelease is true', () => {
+      createRelease({
+        tagName: 'core-v1.1.0-rc.1',
+        name: 'core v1.1.0-rc.1',
+        body: '## Changes',
+        prerelease: true
+      })
+
+      const { args } = lastCall()
+      expect(args).toEqual([
+        'release',
+        'create',
+        'core-v1.1.0-rc.1',
+        '-R',
+        'test-owner/test-repo',
+        '--title',
+        'core v1.1.0-rc.1',
+        '--notes-file',
+        '-',
+        '--prerelease'
+      ])
     })
   })
 

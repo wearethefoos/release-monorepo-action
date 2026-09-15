@@ -32127,6 +32127,31 @@ function createComment(prNumber, body) {
     runGh(args, body);
 }
 /**
+ * gh release create <tag> -R repo --title <t> --notes-file - [--prerelease]
+ * with notes on stdin. The tag must already exist (and be pushed) -- this
+ * only creates the GitHub Release object pointing at it, it does not create
+ * or move the tag itself. Callers decide whether a failure here (e.g. a
+ * release already exists for this tag) is fatal or just a warning; this
+ * function does not swallow errors.
+ */
+function createRelease(options) {
+    const args = [
+        'release',
+        'create',
+        options.tagName,
+        '-R',
+        ghRepo,
+        '--title',
+        options.name,
+        '--notes-file',
+        '-'
+    ];
+    if (options.prerelease) {
+        args.push('--prerelease');
+    }
+    runGh(args, options.body);
+}
+/**
  * gh api repos/<repo>/commits/<sha>/pulls
  * Returns every PR associated with the commit; callers filter to merged
  * ones and sort by mergedAt themselves.
@@ -32310,6 +32335,12 @@ class GitHubService {
             // Add the new version section after the level 1 heading
             const compareLink = `https://github.com/${this.releaseContext.owner}/${this.releaseContext.repo}/compare/${change.path === '.' ? '' : `${change.name}-`}v${change.currentVersion}...${change.path === '.' ? '' : `${change.name}-`}v${change.newVersion}`;
             const newVersionSection = `## [${change.newVersion}](${compareLink}) (${new Date().toISOString().split('T')[0]})\n\n${change.changelog}\n`;
+            // Drop any existing section for this version first, so re-running
+            // against an already-updated release branch (e.g. the release PR
+            // itself triggering another run) replaces it in place instead of
+            // duplicating it.
+            const existingVersionHeading = new RegExp(`^## \\[${this.escapeRegExp(change.newVersion)}\\]\\([^\n]*\\)[^\n]*\n(?:(?!^## )[\\s\\S])*`, 'm');
+            changelogContent = changelogContent.replace(existingVersionHeading, '');
             const lines = changelogContent.split('\n');
             const headingIndex = lines.findIndex((line) => line.startsWith('# '));
             if (headingIndex !== -1) {
@@ -32495,9 +32526,9 @@ class GitHubService {
             const releaseName = change.path === '.'
                 ? versionBase
                 : `${path.basename(change.path)} ${versionBase}`;
-            // Create the annotated tag (replaces the old refs/tags createRef +
-            // repos.createRelease pair). The tag message is the changelog -
-            // GitHub Releases are no longer created at all.
+            // Create the annotated tag first -- this is the source of truth for
+            // the release (tagging works even if the GitHub API is unavailable
+            // or rate-limited). The tag message is the changelog.
             if (tagExists(tagName)) {
                 if (!overwriteExistingTags) {
                     // Hard failure, not a silent skip: continuing past this would
@@ -32518,6 +32549,24 @@ class GitHubService {
                 info(`Creating release ${releaseName}`);
                 createAnnotatedTag(tagName, change.changelog || releaseName, this.releaseContext.sha, getInput('git-user-name'), getInput('git-user-email'));
                 pushTag(tagName);
+            }
+            // Best-effort GitHub Release on top of the tag we just pushed. v3
+            // leans on git as the source of truth so the tag/push above never
+            // depends on the GitHub API, but a GitHub Release is still a useful,
+            // widely-consumed artifact (release notes page, "Releases" feed,
+            // tools that watch the Releases API), so we still try to create one
+            // -- a failure here (rate limit, permissions, an already-existing
+            // release for this tag, ...) is only ever a warning, never fatal.
+            try {
+                createRelease({
+                    tagName,
+                    name: releaseName,
+                    body: change.changelog || releaseName,
+                    prerelease
+                });
+            }
+            catch (error) {
+                warning(`Failed to create GitHub Release for ${tagName}: ${error instanceof Error ? error.message : String(error)}`);
             }
             versions.push({
                 name: path.basename(change.path),
