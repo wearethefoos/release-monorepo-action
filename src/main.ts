@@ -65,6 +65,27 @@ export async function run(): Promise<void> {
       return
     }
 
+    // Any other pull_request event (an ordinary feature/fix PR opened,
+    // synced, or edited against main) must not fall through to computing
+    // changes and creating/updating the release PR -- its merge-preview
+    // checkout includes commits that are not on main yet, so doing so
+    // would propose (or prematurely open) a release for changes that
+    // haven't actually been merged. Only a push (a real merge to main) or
+    // an event on the release branch itself (or a labeled prerelease PR,
+    // handled above) may proceed past this point.
+    if (
+      github.isPullRequestEvent() &&
+      !github.isOnReleaseBranch(releaseTarget) &&
+      !isReleasePR &&
+      !isPreReleasePR
+    ) {
+      core.info(
+        'This pull request is not the release PR and is not labeled for release or prerelease, skipping until it is merged'
+      )
+      core.debug('Returning early: unrelated pull_request event')
+      return
+    }
+
     const isDeletedReleaseBranch =
       await github.isDeletedReleaseBranch(releaseTarget)
 

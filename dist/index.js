@@ -32236,6 +32236,18 @@ class GitHubService {
         }
         return !remoteBranchExists(`release-${target}`);
     }
+    /** True when this run was triggered by a pull_request event (as opposed
+     * to a push, e.g. a real merge to main). */
+    isPullRequestEvent() {
+        return this.releaseContext.isPullRequest;
+    }
+    /** True when the pull_request that triggered this run is itself the
+     * release branch (`release-<target>`) -- as opposed to some unrelated PR
+     * that merely targets main and whose merge-preview checkout happens to
+     * be in scope for this event. */
+    isOnReleaseBranch(target) {
+        return this.releaseContext.headRef === `release-${target}`;
+    }
     async getCommitCount(ref = 'HEAD') {
         const resolved = resolveRef(ref) ?? 'HEAD';
         return getCommitCount(resolved);
@@ -33005,6 +33017,22 @@ async function run() {
         if (labels.length > 0 && !isReleasePR && !isPreReleasePR) {
             info(`This PR does not have the release-target label ${releaseTarget}, skipping`);
             debug('Returning early: PR does not have release-target label');
+            return;
+        }
+        // Any other pull_request event (an ordinary feature/fix PR opened,
+        // synced, or edited against main) must not fall through to computing
+        // changes and creating/updating the release PR -- its merge-preview
+        // checkout includes commits that are not on main yet, so doing so
+        // would propose (or prematurely open) a release for changes that
+        // haven't actually been merged. Only a push (a real merge to main) or
+        // an event on the release branch itself (or a labeled prerelease PR,
+        // handled above) may proceed past this point.
+        if (github.isPullRequestEvent() &&
+            !github.isOnReleaseBranch(releaseTarget) &&
+            !isReleasePR &&
+            !isPreReleasePR) {
+            info('This pull request is not the release PR and is not labeled for release or prerelease, skipping until it is merged');
+            debug('Returning early: unrelated pull_request event');
             return;
         }
         const isDeletedReleaseBranch = await github.isDeletedReleaseBranch(releaseTarget);

@@ -46,7 +46,9 @@ const githubServiceMock = {
   getPullRequestNumberFromContext: vi.fn(),
   getReleaseTargetToLatestChanges: vi.fn(),
   createVersionBumpPullRequest: vi.fn(),
-  getContextSha: vi.fn()
+  getContextSha: vi.fn(),
+  isPullRequestEvent: vi.fn(),
+  isOnReleaseBranch: vi.fn()
 }
 vi.mock('./github.js', () => ({
   GitHubService: vi.fn(function () {
@@ -100,6 +102,11 @@ describe('main.ts', () => {
     githubServiceMock.getReleaseTargetToLatestChanges.mockReturnValue([])
     githubServiceMock.getPullRequestNumberFromContext.mockReturnValue(null)
     githubServiceMock.getContextSha.mockReturnValue('abc123sha')
+    // Default to a push event (matches the pre-existing tests below, none
+    // of which simulate an actual pull_request event); tests that need to
+    // exercise pull_request-specific behavior override these explicitly.
+    githubServiceMock.isPullRequestEvent.mockReturnValue(false)
+    githubServiceMock.isOnReleaseBranch.mockReturnValue(false)
   })
 
   it('should exit early if no changes requiring version updates are found', async () => {
@@ -109,6 +116,48 @@ describe('main.ts', () => {
     expect(core.info).toHaveBeenCalledWith(
       'No changes requiring version updates found'
     )
+  })
+
+  // Regression test: an ordinary, unlabeled PR being opened/synced against
+  // main (e.g. any normal feature/fix PR) must NOT create or update the
+  // release PR. Its merge-preview checkout includes commits that are not
+  // on main yet, so previously this fell through the labels-only guard
+  // (which only skips when the PR HAS labels, none of them relevant) and
+  // ended up proposing a release for not-yet-merged changes -- the release
+  // PR could appear before the triggering PR was even merged.
+  it('should not create or update the release PR for an unrelated, unlabeled pull_request event', async () => {
+    githubServiceMock.getPullRequestLabels.mockResolvedValue([])
+    githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue([
+      'fix: something unrelated'
+    ])
+    githubServiceMock.isPullRequestEvent.mockReturnValue(true)
+    githubServiceMock.isOnReleaseBranch.mockReturnValue(false)
+
+    await run()
+
+    expect(githubServiceMock.createReleasePullRequest).not.toHaveBeenCalled()
+    expect(githubServiceMock.createRelease).not.toHaveBeenCalled()
+    expect(core.info).toHaveBeenCalledWith(
+      'This pull request is not the release PR and is not labeled for release or prerelease, skipping until it is merged'
+    )
+  })
+
+  it('should proceed past the guard for a pull_request event on the release branch itself', async () => {
+    const mockCommits = ['feat(core): add new feature']
+    githubServiceMock.getPullRequestLabels.mockResolvedValue([])
+    githubServiceMock.getAllCommitsSinceLastRelease.mockResolvedValue(
+      mockCommits
+    )
+    githubServiceMock.getCommitsSinceLastRelease.mockResolvedValue(mockCommits)
+    githubServiceMock.isPullRequestEvent.mockReturnValue(true)
+    githubServiceMock.isOnReleaseBranch.mockReturnValue(true)
+    githubServiceMock.onMainBranch.mockResolvedValue(false)
+    githubServiceMock.wasManifestUpdatedInLastCommit.mockResolvedValue(false)
+    githubServiceMock.createReleasePullRequest.mockResolvedValue(undefined)
+
+    await run()
+
+    expect(githubServiceMock.createReleasePullRequest).toHaveBeenCalled()
   })
 
   it('should handle prerelease PRs correctly', async () => {

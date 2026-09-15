@@ -126,6 +126,20 @@ export class GitHubService {
     return !git.remoteBranchExists(`release-${target}`)
   }
 
+  /** True when this run was triggered by a pull_request event (as opposed
+   * to a push, e.g. a real merge to main). */
+  public isPullRequestEvent(): boolean {
+    return this.releaseContext.isPullRequest
+  }
+
+  /** True when the pull_request that triggered this run is itself the
+   * release branch (`release-<target>`) -- as opposed to some unrelated PR
+   * that merely targets main and whose merge-preview checkout happens to
+   * be in scope for this event. */
+  public isOnReleaseBranch(target: string): boolean {
+    return this.releaseContext.headRef === `release-${target}`
+  }
+
   async getCommitCount(ref: string = 'HEAD'): Promise<number> {
     const resolved = git.resolveRef(ref) ?? 'HEAD'
     return git.getCommitCount(resolved)
