@@ -490,9 +490,9 @@ export class GitHubService {
           ? versionBase
           : `${basename(change.path)} ${versionBase}`
 
-      // Create the annotated tag (replaces the old refs/tags createRef +
-      // repos.createRelease pair). The tag message is the changelog -
-      // GitHub Releases are no longer created at all.
+      // Create the annotated tag first -- this is the source of truth for
+      // the release (tagging works even if the GitHub API is unavailable
+      // or rate-limited). The tag message is the changelog.
       if (git.tagExists(tagName)) {
         if (!overwriteExistingTags) {
           // Hard failure, not a silent skip: continuing past this would
@@ -530,6 +530,28 @@ export class GitHubService {
           core.getInput('git-user-email')
         )
         git.pushTag(tagName)
+      }
+
+      // Best-effort GitHub Release on top of the tag we just pushed. v3
+      // leans on git as the source of truth so the tag/push above never
+      // depends on the GitHub API, but a GitHub Release is still a useful,
+      // widely-consumed artifact (release notes page, "Releases" feed,
+      // tools that watch the Releases API), so we still try to create one
+      // -- a failure here (rate limit, permissions, an already-existing
+      // release for this tag, ...) is only ever a warning, never fatal.
+      try {
+        gh.createRelease({
+          tagName,
+          name: releaseName,
+          body: change.changelog || releaseName,
+          prerelease
+        })
+      } catch (error) {
+        core.warning(
+          `Failed to create GitHub Release for ${tagName}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        )
       }
 
       versions.push({

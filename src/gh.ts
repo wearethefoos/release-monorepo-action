@@ -326,6 +326,38 @@ export function createComment(prNumber: number, body: string): void {
 }
 
 /**
+ * gh release create <tag> -R repo --title <t> --notes-file - [--prerelease]
+ * with notes on stdin. The tag must already exist (and be pushed) -- this
+ * only creates the GitHub Release object pointing at it, it does not create
+ * or move the tag itself. Callers decide whether a failure here (e.g. a
+ * release already exists for this tag) is fatal or just a warning; this
+ * function does not swallow errors.
+ */
+export function createRelease(options: {
+  tagName: string
+  name: string
+  body: string
+  prerelease: boolean
+}): void {
+  const args = [
+    'release',
+    'create',
+    options.tagName,
+    '-R',
+    ghRepo,
+    '--title',
+    options.name,
+    '--notes-file',
+    '-'
+  ]
+  if (options.prerelease) {
+    args.push('--prerelease')
+  }
+
+  runGh(args, options.body)
+}
+
+/**
  * gh api repos/<repo>/commits/<sha>/pulls
  * Returns every PR associated with the commit; callers filter to merged
  * ones and sort by mergedAt themselves.
