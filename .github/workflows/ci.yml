@@ -85,6 +85,13 @@ jobs:
         # protection, a concurrent push), so a failure here must not fail
         # the job.
         continue-on-error: true
+        env:
+          # github.head_ref is attacker-controlled (an untrusted branch
+          # name) -- pass it through the environment rather than
+          # interpolating it directly into the script, so it's just a
+          # plain string to the shell instead of textually substituted
+          # before the shell ever runs.
+          HEAD_REF: ${{ github.head_ref }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -96,7 +103,7 @@ jobs:
           git diff --name-only -z -- CHANGELOG.md '**/CHANGELOG.md' |
             xargs -0 -r git add --
           git commit -m "chore: fix changelog formatting"
-          git push origin "HEAD:${{ github.head_ref }}"
+          git push origin "HEAD:refs/heads/$HEAD_REF"
 
       - name: Check Format
         id: pnpm-format-check
