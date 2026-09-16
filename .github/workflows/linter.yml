@@ -12,6 +12,10 @@ permissions:
   contents: read
   packages: read
   statuses: write
+  # super-linter posts a PR summary comment via POST
+  # /repos/{owner}/{repo}/issues/{pr}/comments (ENABLE_GITHUB_PULL_REQUEST_SUMMARY_COMMENT,
+  # on by default), which needs issues:write -- without it that POST 403s.
+  issues: write
 
 jobs:
   lint:
