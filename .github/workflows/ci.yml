@@ -15,13 +15,24 @@ jobs:
   test-typescript:
     name: TypeScript Tests
     runs-on: ubuntu-latest
+    permissions:
+      # To push an auto-fix commit for CHANGELOG.md formatting (see the
+      # "Commit changelog formatting fix" step below).
+      contents: write
 
     steps:
       - name: Checkout
         id: checkout
         uses: actions/checkout@v7
         with:
-          persist-credentials: false
+          # The default pull_request checkout (refs/pull/<n>/merge) is a
+          # synthetic merge commit, not the PR branch's own tip -- pushing
+          # that back to the branch would graft in a merge of main we never
+          # intended. Check out the actual head commit instead, so a later
+          # `git push origin HEAD:<branch>` in this job pushes only the
+          # genuine PR history plus our own fix commit.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: true
 
       - name: Setup pnpm
         id: setup-pnpm
@@ -39,6 +50,60 @@ jobs:
       - name: Install Dependencies
         id: pnpm-install
         run: pnpm install
+
+      # The release-action itself generates CHANGELOG.md (see
+      # src/github.ts), and that generated prose isn't guaranteed to match
+      # this repo's own Prettier config (proseWrap: always wraps at
+      # printWidth), which then fails Check Format below on the release PR.
+      # Fix it in place here, before the check runs, so this job never fails
+      # over formatting the release action put there itself -- and commit
+      # the fix back to the branch so it stays fixed on the next run too.
+      - name: Auto-fix CHANGELOG.md formatting
+        id: fix-changelog-format
+        run: |
+          pnpm exec prettier --write '**/CHANGELOG.md'
+          # Git's default (non-glob) pathspec matching treats a leading
+          # `**/` as requiring at least one directory component, so it
+          # matches packages/*/CHANGELOG.md but NOT the root CHANGELOG.md
+          # on its own -- unlike prettier's own glob, which matches both.
+          # List the root file explicitly alongside the glob so both are
+          # covered.
+          if git diff --quiet -- CHANGELOG.md '**/CHANGELOG.md'; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit changelog formatting fix
+        id: commit-changelog-format
+        if:
+          steps.fix-changelog-format.outputs.changed == 'true' &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        # Best-effort: the working tree is already fixed for the steps
+        # below regardless of whether this push succeeds (e.g. branch
+        # protection, a concurrent push), so a failure here must not fail
+        # the job.
+        continue-on-error: true
+        env:
+          # github.head_ref is attacker-controlled (an untrusted branch
+          # name) -- pass it through the environment rather than
+          # interpolating it directly into the script, so it's just a
+          # plain string to the shell instead of textually substituted
+          # before the shell ever runs.
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # `git add -- CHANGELOG.md '**/CHANGELOG.md'` would fail outright
+          # (pathspec did not match any files) whenever there are no nested
+          # package changelogs, which is this repo's actual current state --
+          # `git diff --name-only` tolerates a non-matching pathspec, so
+          # stage exactly the files it reports instead.
+          git diff --name-only -z -- CHANGELOG.md '**/CHANGELOG.md' |
+            xargs -0 -r git add --
+          git commit -m "chore: fix changelog formatting"
+          git push origin "HEAD:refs/heads/$HEAD_REF"
 
       - name: Check Format
         id: pnpm-format-check
