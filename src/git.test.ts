@@ -974,12 +974,37 @@ describe('commitFilesToBranch', () => {
       '-A'
     ])
 
+    // Checks whether `branch` already exists and, if so, whether the tree
+    // we're about to commit is identical to what's already there (the
+    // no-op-skip check -- covered on its own below). Here the existing
+    // branch's tree ('newsha123', from the blanket rev-parse mock) differs
+    // from the freshly staged tree (write-tree isn't a 'rev-parse' call, so
+    // it falls through to the mock's '' default), so this falls through to
+    // the normal commit/push path.
+    expect(mockExec).toHaveBeenNthCalledWith(
+      3,
+      'git',
+      ['rev-parse', '--verify', '--quiet', 'origin/release-main'],
+      { allowNonZeroExit: true }
+    )
+    expect(mockExec).toHaveBeenNthCalledWith(4, 'git', [
+      '-C',
+      worktreeDir,
+      'rev-parse',
+      'newsha123^{tree}'
+    ])
+    expect(mockExec).toHaveBeenNthCalledWith(5, 'git', [
+      '-C',
+      worktreeDir,
+      'write-tree'
+    ])
+
     // Commit with per-command identity; the multiline message with
     // backticks/$() is a single argv element. allowNonZeroExit lets the
     // "nothing to commit" case be detected below instead of always
     // throwing.
     expect(mockExec).toHaveBeenNthCalledWith(
-      3,
+      6,
       'git',
       [
         '-C',
@@ -996,7 +1021,7 @@ describe('commitFilesToBranch', () => {
     )
 
     // Force-push replicates the old updateRef({force: true}) upsert.
-    expect(mockExec).toHaveBeenNthCalledWith(4, 'git', [
+    expect(mockExec).toHaveBeenNthCalledWith(7, 'git', [
       '-C',
       worktreeDir,
       'push',
@@ -1006,7 +1031,7 @@ describe('commitFilesToBranch', () => {
     ])
 
     // New SHA read from the worktree HEAD.
-    expect(mockExec).toHaveBeenNthCalledWith(5, 'git', [
+    expect(mockExec).toHaveBeenNthCalledWith(8, 'git', [
       '-C',
       worktreeDir,
       'rev-parse',
@@ -1015,7 +1040,7 @@ describe('commitFilesToBranch', () => {
 
     // Cleanup: worktree removed and temp dir deleted.
     expect(mockExec).toHaveBeenNthCalledWith(
-      6,
+      9,
       'git',
       ['worktree', 'remove', '--force', worktreeDir],
       { allowNonZeroExit: true }
@@ -1157,6 +1182,87 @@ describe('commitFilesToBranch', () => {
     )
     // Still cleaned up.
     expect(mockExec.mock.calls.some((call) => call[1].includes('remove'))).toBe(
+      true
+    )
+  })
+
+  // Regression test: a re-run whose computed tree is byte-identical to what
+  // is already on `branch` must not commit or push at all -- not even a
+  // no-op commit. Reproduces a real bug: the release PR's branch got a
+  // brand new force-pushed commit on every single re-run of the Release
+  // workflow (e.g. every time someone clicked "Approve workflows to run"),
+  // even though nothing about the release had actually changed, because
+  // `git commit` always succeeds with a new SHA (author timestamp) even
+  // when the tree and message are identical to the last run. Each
+  // force-push re-triggered the PR's synchronize event, which re-required
+  // approval, which force-pushed again -- an endless loop.
+  it('skips the commit and push entirely when the resulting tree already matches the branch tip', () => {
+    mockExec.mockImplementation((_file, args) => {
+      if (
+        args[0] === 'rev-parse' &&
+        args.includes('--verify') &&
+        args.includes(`origin/${options.branch}`)
+      ) {
+        return ok('existing-branch-sha\n')
+      }
+      if (args.includes('write-tree')) {
+        return ok('same-tree-hash\n')
+      }
+      if (
+        args.includes('rev-parse') &&
+        args.includes('existing-branch-sha^{tree}')
+      ) {
+        return ok('same-tree-hash\n')
+      }
+      return ok('')
+    })
+
+    const sha = git.commitFilesToBranch(options)
+
+    expect(sha).toBe('existing-branch-sha')
+    expect(mockExec.mock.calls.some((call) => call[1].includes('commit'))).toBe(
+      false
+    )
+    expect(mockExec.mock.calls.some((call) => call[1].includes('push'))).toBe(
+      false
+    )
+    // Still cleaned up.
+    expect(mockExec.mock.calls.some((call) => call[1].includes('remove'))).toBe(
+      true
+    )
+  })
+
+  it('proceeds to commit and push when the branch exists but its tree differs from the freshly staged one', () => {
+    mockExec.mockImplementation((_file, args) => {
+      if (
+        args[0] === 'rev-parse' &&
+        args.includes('--verify') &&
+        args.includes(`origin/${options.branch}`)
+      ) {
+        return ok('existing-branch-sha\n')
+      }
+      if (args.includes('write-tree')) {
+        return ok('new-tree-hash\n')
+      }
+      if (
+        args.includes('rev-parse') &&
+        args.includes('existing-branch-sha^{tree}')
+      ) {
+        return ok('old-tree-hash\n')
+      }
+      if (args.includes('rev-parse') && args.includes('HEAD')) {
+        return ok('freshly-committed-sha\n')
+      }
+      return ok('')
+    })
+
+    const sha = git.commitFilesToBranch(options)
+
+    expect(sha).toBe('freshly-committed-sha')
+    expect(mockExec.mock.calls.some((call) => call[1].includes('commit'))).toBe(
+      true
+    )
+    expect(mockExec.mock.calls.some((call) => call[1].includes('push'))).toBe(
       true
     )
   })
