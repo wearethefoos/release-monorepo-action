@@ -5,10 +5,12 @@
 ### 🐛 Fixes
 
 - dedupe changelog sections and restore GitHub Releases (#130)
-- skip unrelated pull_request events instead of prematurely creating the release PR (#132)
+- skip unrelated pull_request events instead of prematurely creating the release
+  PR (#132)
 - stop force-pushing a new no-op commit on every release-branch run (#133)
 - auto-fix and commit CHANGELOG.md formatting in CI before checking it (#135)
-- grant issues:write so the Lint Codebase workflow can post its PR summary comment (#134)
+- grant issues:write so the Lint Codebase workflow can post its PR summary
+  comment (#134)
 
 ## [3.0.0](https://github.com/wearethefoos/release-monorepo-action/compare/v2.0.0...v3.0.0) (2026-09-10)
 
