@@ -31825,6 +31825,36 @@ function commitFilesToBranch(options) {
         // contains a clean checkout of `baseRef` plus those changes, so this
         // stays precisely scoped to what actually changed.
         execCommand('git', ['-C', worktreeDir, 'add', '-A']);
+        // Compare the tree we're about to commit against what's already on
+        // `branch` (if it exists), not just against `baseRef` (the "nothing to
+        // commit" check below). The worktree is always built fresh from
+        // `baseRef`, so as long as `baseRef` hasn't moved and the computed
+        // files haven't changed, every run recomputes the exact same tree --
+        // but committing it unconditionally still creates a brand new commit
+        // object every time (a commit's SHA includes its author timestamp, so
+        // even an identical tree/message/parent produces a new SHA) and
+        // force-pushes it, which re-triggers the PR's `synchronize` event. On
+        // a repo that requires approval for PR-triggered workflow runs, that's
+        // an endless approve -> force-push -> re-approve loop over content
+        // that never actually changed. Skip the commit/push entirely and
+        // return the branch's current SHA when there's truly nothing new.
+        const existingBranchSha = getRemoteBranchSha(branch);
+        if (existingBranchSha !== null) {
+            const existingTree = execCommand('git', [
+                '-C',
+                worktreeDir,
+                'rev-parse',
+                `${existingBranchSha}^{tree}`
+            ]).stdout.trim();
+            const stagedTree = execCommand('git', [
+                '-C',
+                worktreeDir,
+                'write-tree'
+            ]).stdout.trim();
+            if (existingTree === stagedTree) {
+                return existingBranchSha;
+            }
+        }
         const commitArgs = [
             '-C',
             worktreeDir,
