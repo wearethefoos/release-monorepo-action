@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.1.0](https://github.com/wearethefoos/release-monorepo-action/compare/v3.0.1...v3.1.0) (2026-09-25)
+
+### 🚀 Features
+
+- support iOS, Android and Flutter version files (#137)
+
 ## [3.0.1](https://github.com/wearethefoos/release-monorepo-action/compare/v3.0.0...v3.0.1) (2026-09-16)
 
 ### 🐛 Fixes
