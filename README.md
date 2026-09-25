@@ -61,10 +61,37 @@ following file types:
 - **package.json** - For Node.js/JavaScript projects
 - **Cargo.toml** - For Rust projects
 - **pyproject.toml** - For Python projects (updates the `project.version` field)
+- **pubspec.yaml** - For Flutter/Dart projects
 - **version.txt** - For projects using a simple text file for versioning
+- **iOS projects** - `*.xcodeproj/project.pbxproj` (`MARKETING_VERSION`,
+  `CURRENT_PROJECT_VERSION`) and hard-coded `Info.plist` values
+  (`CFBundleShortVersionString`, `CFBundleVersion`)
+- **Android projects** - `build.gradle` / `build.gradle.kts` (`versionName`,
+  `versionCode`)
 
-The action will automatically detect which file type exists in each package
-directory and update it accordingly.
+The action will automatically detect which of the first five file types exists
+in each package directory (first match, in the order listed) and update it
+accordingly. iOS and Android projects are updated in addition to that, whether
+they sit in the package directory itself or in its `ios/` and `android/`
+subdirectories, so a React Native or Capacitor app keeps `package.json` and both
+native projects in sync.
+
+### Mobile build numbers
+
+App stores need a build number that strictly increases with every upload, next
+to the user-facing version. On each release, the action sets the version
+(`MARKETING_VERSION`, `versionName`, the part of `pubspec.yaml`'s `version`
+before `+`) to the new release version, and the build number
+(`CURRENT_PROJECT_VERSION`, `CFBundleVersion`, `versionCode`, the part after
+`+`) to one more than the highest build number that platform's files have on
+`main`. All targets, configurations and flavors end up on the same new build
+number.
+
+Only literal values are changed. Values that point elsewhere, such as
+`$(MARKETING_VERSION)` in an Info.plist, Flutter's `$(FLUTTER_BUILD_NAME)`, or
+`versionCode rootProject.ext.versionCode`, are left alone. If your CI sets the
+build number itself (e.g. from `GITHUB_RUN_NUMBER`), keep it non-literal in
+these files and the action will only update the version.
 
 Cargo.toml and pyproject.toml are updated with a targeted edit of just the
 `version` field's value, not a full parse/reformat, so comments, key order, and

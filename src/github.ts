@@ -12,6 +12,7 @@ import { basename } from 'path'
 import { getActionContext } from './context.js'
 import * as git from './git.js'
 import * as gh from './gh.js'
+import { updateMobileVersions, updatePubspecVersion } from './mobile.js'
 
 interface CommitFile {
   filename: string
@@ -228,20 +229,17 @@ export class GitHubService {
     // keep it in sync after a version bump.
     const changedCargoTomlDirs = new Set<string>()
     for (const change of changes) {
-      await this.updatePackageVersion(change.path, change.newVersion)
+      const versionFiles = await this.updatePackageVersion(
+        change.path,
+        change.newVersion
+      )
 
-      // Add the updated version file to the set of files to commit
-      for (const filePath of [
-        path.join(change.path, 'package.json'),
-        path.join(change.path, 'Cargo.toml'),
-        path.join(change.path, 'version.txt')
-      ]) {
-        if (fs.existsSync(filePath)) {
-          const content = fs.readFileSync(filePath, 'utf-8')
-          files.push({ path: filePath, content })
-          if (filePath.endsWith('Cargo.toml')) {
-            changedCargoTomlDirs.add(change.path)
-          }
+      // Add the updated version files to the set of files to commit
+      for (const filePath of versionFiles) {
+        const content = fs.readFileSync(filePath, 'utf-8')
+        files.push({ path: filePath, content })
+        if (filePath.endsWith('Cargo.toml')) {
+          changedCargoTomlDirs.add(change.path)
         }
       }
 
@@ -848,13 +846,41 @@ export class GitHubService {
     gh.createComment(this.releaseContext.pullRequestNumber, body)
   }
 
+  /**
+   * Updates the package's version file(s) and returns the paths written.
+   * One of package.json, Cargo.toml, pyproject.toml, pubspec.yaml or
+   * version.txt (first match wins), plus any iOS/Android native project in
+   * the package or its ios/ and android/ subdirectories -- so e.g. a React
+   * Native app keeps package.json and both native projects in sync.
+   */
   async updatePackageVersion(
     packagePath: string,
     newVersion: string
-  ): Promise<void> {
+  ): Promise<string[]> {
+    const primary = this.updatePrimaryVersionFile(packagePath, newVersion)
+    const mobile = updateMobileVersions(packagePath, newVersion)
+
+    if (primary === null && mobile.length === 0) {
+      throw new Error(
+        `No package.json, Cargo.toml, pyproject.toml, pubspec.yaml, version.txt, or iOS/Android project found in ${packagePath}`
+      )
+    }
+    return [...(primary ?? []), ...mobile]
+  }
+
+  /**
+   * Returns the paths written, or null when the package has none of these
+   * files (as opposed to having one without a version field to update,
+   * e.g. a Cargo workspace root, which is not an error).
+   */
+  private updatePrimaryVersionFile(
+    packagePath: string,
+    newVersion: string
+  ): string[] | null {
     const packageJsonPath = path.join(packagePath, 'package.json')
     const cargoTomlPath = path.join(packagePath, 'Cargo.toml')
     const pyprojectTomlPath = path.join(packagePath, 'pyproject.toml')
+    const pubspecYamlPath = path.join(packagePath, 'pubspec.yaml')
     const versionTxtPath = path.join(packagePath, 'version.txt')
     const indentation = core.getInput('indentation') ?? '2'
     const indent =
@@ -866,32 +892,39 @@ export class GitHubService {
       const formattedJSON =
         JSON.stringify(packageJson, null, 2).replace(/ {2}/g, indent) + '\n'
       fs.writeFileSync(packageJsonPath, formattedJSON)
+      return [packageJsonPath]
     } else if (fs.existsSync(cargoTomlPath)) {
       const updated = replaceTomlVersion(
         fs.readFileSync(cargoTomlPath, 'utf-8'),
         'package',
         newVersion
       )
-      if (updated !== null) {
-        fs.writeFileSync(cargoTomlPath, updated)
+      if (updated === null) {
+        return []
       }
+      fs.writeFileSync(cargoTomlPath, updated)
+      return [cargoTomlPath]
     } else if (fs.existsSync(pyprojectTomlPath)) {
       const updated = replaceTomlVersion(
         fs.readFileSync(pyprojectTomlPath, 'utf-8'),
         'project',
         newVersion
       )
-      if (updated !== null) {
-        fs.writeFileSync(pyprojectTomlPath, updated)
+      if (updated === null) {
+        return []
       }
+      fs.writeFileSync(pyprojectTomlPath, updated)
+      return [pyprojectTomlPath]
+    } else if (fs.existsSync(pubspecYamlPath)) {
+      return updatePubspecVersion(pubspecYamlPath, newVersion)
+        ? [pubspecYamlPath]
+        : []
     } else if (fs.existsSync(versionTxtPath)) {
       // For version.txt, we just write the version number directly
       fs.writeFileSync(versionTxtPath, newVersion + '\n')
-    } else {
-      throw new Error(
-        `No package.json, Cargo.toml, pyproject.toml, or version.txt found in ${packagePath}`
-      )
+      return [versionTxtPath]
     }
+    return null
   }
 
   async getPullRequestFromCommit(sha: string): Promise<number | null> {
