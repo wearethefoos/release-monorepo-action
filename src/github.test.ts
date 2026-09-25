@@ -62,7 +62,8 @@ vi.mock('./gh.js', () => ({
 vi.mock('fs', () => ({
   existsSync: vi.fn(),
   readFileSync: vi.fn(),
-  writeFileSync: vi.fn()
+  writeFileSync: vi.fn(),
+  readdirSync: vi.fn()
 }))
 
 const mockGetActionContext = vi.mocked(getActionContext)
@@ -947,6 +948,25 @@ describe('GitHubService', () => {
       )
     })
 
+    it('commits a bumped pyproject.toml along with the release', async () => {
+      const pyprojectPath = 'packages/core/pyproject.toml'
+      vi.mocked(fs.existsSync).mockImplementation(
+        (p) => p === pyprojectPath || p === manifestPath
+      )
+      vi.mocked(fs.readFileSync).mockImplementation((p) => {
+        if (p === pyprojectPath) return '[project]\nversion = "1.0.0"\n'
+        if (p === manifestPath) return '{}'
+        return ''
+      })
+      mockGh.listOpenPullRequests.mockReturnValue([])
+      mockGh.createPullRequest.mockReturnValue(456)
+
+      await githubService.createReleasePullRequest(changes, 'release-me')
+
+      const { files } = mockGit.commitFilesToBranch.mock.calls[0][0]
+      expect(files.map((f) => f.path)).toContain(pyprojectPath)
+    })
+
     it('replaces an already-present section for the new version instead of duplicating it', async () => {
       // Simulates re-running against a checkout that already has this
       // version's section committed (e.g. the release PR itself
@@ -1509,7 +1529,7 @@ describe('GitHubService', () => {
       await expect(
         githubService.updatePackageVersion(packagePath, newVersion)
       ).rejects.toThrow(
-        `No package.json, Cargo.toml, pyproject.toml, or version.txt found in ${packagePath}`
+        `No package.json, Cargo.toml, pyproject.toml, pubspec.yaml, version.txt, or iOS/Android project found in ${packagePath}`
       )
     })
   })

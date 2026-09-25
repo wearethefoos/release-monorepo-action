@@ -32193,6 +32193,150 @@ function getMergedPullRequestsForCommit(sha) {
     return prs.map((pr) => toPullRequestInfo(pr, pr.merged_at !== null, pr.merged_at));
 }
 
+// A pbxproj value is either bare (`1.2.3`) or quoted (`"1.2.3"`); anything
+// referencing a build setting (`$(...)`) is deliberately not matched.
+const PBXPROJ_MARKETING_VERSION = /(\bMARKETING_VERSION = )("?)([^";\n$]*)\2;/g;
+const PBXPROJ_BUILD_NUMBER = /(\bCURRENT_PROJECT_VERSION = )("?)(\d+)\2;/g;
+const PLIST_MARKETING_VERSION = /(<key>CFBundleShortVersionString<\/key>\s*<string>)([^<$]*)(<\/string>)/g;
+const PLIST_BUILD_NUMBER = /(<key>CFBundleVersion<\/key>\s*<string>)(\d+)(<\/string>)/g;
+// Groovy (`versionName "1.2.3"`) and Kotlin DSL (`versionName = "1.2.3"`).
+const GRADLE_VERSION_NAME = /^(\s*versionName\s*(?:=\s*)?)(["'])([^"']*)\2/gm;
+const GRADLE_VERSION_CODE = /^(\s*versionCode\s*(?:=\s*)?)(\d+)\b/gm;
+function numbersFrom(content, regex, group) {
+    return [...content.matchAll(regex)].map((m) => parseInt(m[group], 10));
+}
+function listDir(dir) {
+    if (!fs__namespace.existsSync(dir)) {
+        return [];
+    }
+    return fs__namespace.readdirSync(dir).sort();
+}
+/** The package directory itself, plus a conventional `<name>/` subdirectory
+ * (React Native, Capacitor and Flutter keep native projects in `ios/` and
+ * `android/`). */
+function platformRoots(packagePath, subdir) {
+    return [packagePath, path__namespace.join(packagePath, subdir)];
+}
+const ios = {
+    name: 'iOS',
+    findFiles(packagePath) {
+        const files = [];
+        for (const root of platformRoots(packagePath, 'ios')) {
+            for (const entry of listDir(root)) {
+                if (entry.endsWith('.xcodeproj')) {
+                    const pbxproj = path__namespace.join(root, entry, 'project.pbxproj');
+                    if (fs__namespace.existsSync(pbxproj)) {
+                        files.push(pbxproj);
+                    }
+                }
+                // Older projects hardcode versions in Info.plist instead of
+                // pointing it at the MARKETING_VERSION build setting.
+                const plist = path__namespace.join(root, entry, 'Info.plist');
+                if (fs__namespace.existsSync(plist)) {
+                    files.push(plist);
+                }
+            }
+        }
+        return files;
+    },
+    buildNumbers(content) {
+        return [
+            ...numbersFrom(content, PBXPROJ_BUILD_NUMBER, 3),
+            ...numbersFrom(content, PLIST_BUILD_NUMBER, 2)
+        ];
+    },
+    apply(content, version, buildNumber) {
+        return content
+            .replace(PBXPROJ_MARKETING_VERSION, `$1$2${version}$2;`)
+            .replace(PBXPROJ_BUILD_NUMBER, `$1$2${buildNumber}$2;`)
+            .replace(PLIST_MARKETING_VERSION, `$1${version}$3`)
+            .replace(PLIST_BUILD_NUMBER, `$1${buildNumber}$3`);
+    }
+};
+const android = {
+    name: 'Android',
+    findFiles(packagePath) {
+        const files = [];
+        for (const root of platformRoots(packagePath, 'android')) {
+            // The module's build file normally lives one level down (`app/`).
+            for (const dir of [
+                root,
+                ...listDir(root).map((e) => path__namespace.join(root, e))
+            ]) {
+                for (const name of ['build.gradle', 'build.gradle.kts']) {
+                    const file = path__namespace.join(dir, name);
+                    if (fs__namespace.existsSync(file)) {
+                        files.push(file);
+                    }
+                }
+            }
+        }
+        return files;
+    },
+    buildNumbers(content) {
+        return numbersFrom(content, GRADLE_VERSION_CODE, 2);
+    },
+    apply(content, version, buildNumber) {
+        return content
+            .replace(GRADLE_VERSION_NAME, `$1$2${version}$2`)
+            .replace(GRADLE_VERSION_CODE, `$1${buildNumber}`);
+    }
+};
+/**
+ * Updates every iOS and Android version file found in `packagePath` (or
+ * its `ios/` / `android/` subdirectories) and returns the paths it wrote.
+ */
+function updateMobileVersions(packagePath, newVersion) {
+    const written = [];
+    for (const platform of [ios, android]) {
+        const files = [...new Set(platform.findFiles(packagePath))];
+        const contents = new Map(files.map((file) => [file, fs__namespace.readFileSync(file, 'utf-8')]));
+        const buildNumbers = files.flatMap((file) => platform.buildNumbers(getFileAtRef('origin/main', file) ?? contents.get(file)));
+        const nextBuildNumber = Math.max(0, ...buildNumbers) + 1;
+        let updatedVersion = false;
+        for (const [file, content] of contents) {
+            const updated = platform.apply(content, newVersion, nextBuildNumber);
+            if (updated !== content) {
+                fs__namespace.writeFileSync(file, updated);
+                written.push(file);
+                updatedVersion = true;
+            }
+        }
+        if (updatedVersion) {
+            if (buildNumbers.length === 0) {
+                warning(`No literal ${platform.name} build number found in ${packagePath}; only the version was updated`);
+            }
+            else {
+                info(`Set ${platform.name} version to ${newVersion} (build ${nextBuildNumber}) in ${packagePath}`);
+            }
+        }
+    }
+    return written;
+}
+// `version: 1.2.3+42` -- optionally quoted, the `+<build>` part optional.
+const PUBSPEC_VERSION = /^(version:[ \t]*)(["']?)([^\s"'+#]+)(?:\+(\d+))?\2/m;
+/**
+ * Updates a Flutter pubspec.yaml's `version`, which carries both the
+ * user-facing version and (after `+`) the build number Flutter feeds into
+ * the iOS and Android builds. The build number, when present, is bumped
+ * from its value on origin/main (see above). Returns false when the file
+ * has no top-level `version` field.
+ */
+function updatePubspecVersion(pubspecPath, newVersion) {
+    const content = fs__namespace.readFileSync(pubspecPath, 'utf-8');
+    const match = PUBSPEC_VERSION.exec(content);
+    if (!match) {
+        return false;
+    }
+    let version = newVersion;
+    if (match[4] !== undefined) {
+        const base = PUBSPEC_VERSION.exec(getFileAtRef('origin/main', pubspecPath) ?? content);
+        version += `+${parseInt(base?.[4] ?? match[4], 10) + 1}`;
+    }
+    fs__namespace.writeFileSync(pubspecPath, content.replace(PUBSPEC_VERSION, `$1$2${version}$2`));
+    return true;
+}
+
 /**
  * Replaces the `version = "..."` field inside a TOML file's top-level
  * `[tableName]` table (e.g. Cargo.toml's `[package]`, pyproject.toml's
@@ -32346,19 +32490,13 @@ class GitHubService {
         // keep it in sync after a version bump.
         const changedCargoTomlDirs = new Set();
         for (const change of changes) {
-            await this.updatePackageVersion(change.path, change.newVersion);
-            // Add the updated version file to the set of files to commit
-            for (const filePath of [
-                path__namespace.join(change.path, 'package.json'),
-                path__namespace.join(change.path, 'Cargo.toml'),
-                path__namespace.join(change.path, 'version.txt')
-            ]) {
-                if (fs__namespace.existsSync(filePath)) {
-                    const content = fs__namespace.readFileSync(filePath, 'utf-8');
-                    files.push({ path: filePath, content });
-                    if (filePath.endsWith('Cargo.toml')) {
-                        changedCargoTomlDirs.add(change.path);
-                    }
+            const versionFiles = await this.updatePackageVersion(change.path, change.newVersion);
+            // Add the updated version files to the set of files to commit
+            for (const filePath of versionFiles) {
+                const content = fs__namespace.readFileSync(filePath, 'utf-8');
+                files.push({ path: filePath, content });
+                if (filePath.endsWith('Cargo.toml')) {
+                    changedCargoTomlDirs.add(change.path);
                 }
             }
             // Add/update the changelog
@@ -32830,10 +32968,31 @@ class GitHubService {
         }
         createComment(this.releaseContext.pullRequestNumber, body);
     }
+    /**
+     * Updates the package's version file(s) and returns the paths written.
+     * One of package.json, Cargo.toml, pyproject.toml, pubspec.yaml or
+     * version.txt (first match wins), plus any iOS/Android native project in
+     * the package or its ios/ and android/ subdirectories -- so e.g. a React
+     * Native app keeps package.json and both native projects in sync.
+     */
     async updatePackageVersion(packagePath, newVersion) {
+        const primary = this.updatePrimaryVersionFile(packagePath, newVersion);
+        const mobile = updateMobileVersions(packagePath, newVersion);
+        if (primary === null && mobile.length === 0) {
+            throw new Error(`No package.json, Cargo.toml, pyproject.toml, pubspec.yaml, version.txt, or iOS/Android project found in ${packagePath}`);
+        }
+        return [...(primary ?? []), ...mobile];
+    }
+    /**
+     * Returns the paths written, or null when the package has none of these
+     * files (as opposed to having one without a version field to update,
+     * e.g. a Cargo workspace root, which is not an error).
+     */
+    updatePrimaryVersionFile(packagePath, newVersion) {
         const packageJsonPath = path__namespace.join(packagePath, 'package.json');
         const cargoTomlPath = path__namespace.join(packagePath, 'Cargo.toml');
         const pyprojectTomlPath = path__namespace.join(packagePath, 'pyproject.toml');
+        const pubspecYamlPath = path__namespace.join(packagePath, 'pubspec.yaml');
         const versionTxtPath = path__namespace.join(packagePath, 'version.txt');
         const indentation = getInput('indentation') ?? '2';
         const indent = indentation === 'tab' ? '\t' : ' '.repeat(parseInt(indentation));
@@ -32842,26 +33001,35 @@ class GitHubService {
             packageJson.version = newVersion;
             const formattedJSON = JSON.stringify(packageJson, null, 2).replace(/ {2}/g, indent) + '\n';
             fs__namespace.writeFileSync(packageJsonPath, formattedJSON);
+            return [packageJsonPath];
         }
         else if (fs__namespace.existsSync(cargoTomlPath)) {
             const updated = replaceTomlVersion(fs__namespace.readFileSync(cargoTomlPath, 'utf-8'), 'package', newVersion);
-            if (updated !== null) {
-                fs__namespace.writeFileSync(cargoTomlPath, updated);
+            if (updated === null) {
+                return [];
             }
+            fs__namespace.writeFileSync(cargoTomlPath, updated);
+            return [cargoTomlPath];
         }
         else if (fs__namespace.existsSync(pyprojectTomlPath)) {
             const updated = replaceTomlVersion(fs__namespace.readFileSync(pyprojectTomlPath, 'utf-8'), 'project', newVersion);
-            if (updated !== null) {
-                fs__namespace.writeFileSync(pyprojectTomlPath, updated);
+            if (updated === null) {
+                return [];
             }
+            fs__namespace.writeFileSync(pyprojectTomlPath, updated);
+            return [pyprojectTomlPath];
+        }
+        else if (fs__namespace.existsSync(pubspecYamlPath)) {
+            return updatePubspecVersion(pubspecYamlPath, newVersion)
+                ? [pubspecYamlPath]
+                : [];
         }
         else if (fs__namespace.existsSync(versionTxtPath)) {
             // For version.txt, we just write the version number directly
             fs__namespace.writeFileSync(versionTxtPath, newVersion + '\n');
+            return [versionTxtPath];
         }
-        else {
-            throw new Error(`No package.json, Cargo.toml, pyproject.toml, or version.txt found in ${packagePath}`);
-        }
+        return null;
     }
     async getPullRequestFromCommit(sha) {
         try {
