@@ -32229,7 +32229,7 @@ const ios = {
                         files.push(pbxproj);
                     }
                 }
-                // Older projects hard-code versions in Info.plist instead of
+                // Older projects hardcode versions in Info.plist instead of
                 // pointing it at the MARKETING_VERSION build setting.
                 const plist = path__namespace.join(root, entry, 'Info.plist');
                 if (fs__namespace.existsSync(plist)) {

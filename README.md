@@ -64,7 +64,7 @@ following file types:
 - **pubspec.yaml** - For Flutter/Dart projects
 - **version.txt** - For projects using a simple text file for versioning
 - **iOS projects** - `*.xcodeproj/project.pbxproj` (`MARKETING_VERSION`,
-  `CURRENT_PROJECT_VERSION`) and hard-coded `Info.plist` values
+  `CURRENT_PROJECT_VERSION`) and hardcoded `Info.plist` values
   (`CFBundleShortVersionString`, `CFBundleVersion`)
 - **Android projects** - `build.gradle` / `build.gradle.kts` (`versionName`,
   `versionCode`)
